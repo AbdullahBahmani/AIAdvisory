@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 0 foundation built and locally smoke-tested; dependency resolution lock and hosted CI verification pending. Phase 1 not started.
+**Status:** Phase 0 foundation committed to main; local API and tests verified. **Phase 0 exit is blocked** by a missing resolved dependency lock and a failing hosted CI run (GitHub job logs unavailable). Phase 1 not started.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -249,7 +249,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 - [x] P0-04 Add FastAPI health endpoint, Streamlit smoke page, CI, and local run commands.
 - [x] P0-05 Record architecture ADR (Streamlit/FastAPI/SQLite initially; modular monolith; optional LLM); write a short threat-model draft.
 
-**Exit verification (2026-10-11):** Four local API/UI-adapter smoke tests passed; editable package install without dependencies passed; TOML/YAML parsed. GitHub-hosted CI and actual Streamlit boot must still be checked because the available local runtime lacks the Streamlit and Ruff packages. Lock remains pending; therefore the strict Phase 0 exit gate is **not yet fully verified**.
+**Exit verification (2026-10-11):** Four local API/UI-adapter smoke tests passed; editable packaging without dependency downloads passed; TOML/YAML parsed; a live Uvicorn server returned HTTP 200 from `/health` and `/openapi.json`. GitHub Actions [CI run #1](https://github.com/AbdullahBahmani/AIAdvisory/actions/runs/38146203397) failed twice (including a rerun); job logs were unavailable, so do not attribute the failure to any specific cause. Full Streamlit boot, Ruff lint/format, hosted CI success, and a resolved `uv.lock` remain unverified/pending. **To close Phase 0:** in a network-enabled Python 3.12 environment, run `python -m pip install uv`, `uv lock`, `uv sync --extra dev`, `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest`; start the API and UI for a manual smoke test; commit `uv.lock`; then repair/confirm a green GitHub Actions run.
 
 ### Phase 1 — Deterministic assessment engine (days 3–7)
 - [ ] P1-01 Define typed schemas/enums for organizations, assessments, workflows, tasks, six categories, questions, answers, evidence, risks, controls, scores, decisions.
