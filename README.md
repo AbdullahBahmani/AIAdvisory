@@ -4,13 +4,15 @@ A **human-led, rules-first** decision-support app for discovering workflows, eva
 
 > **AI assists. Rules enforce. Data informs. Humans decide.** This project never authorizes production rollout or executes customer/business actions.
 
-## Project status (Phase 3)
+## Project status (Phase 4)
 
 **Implemented:** persistent local assessments, guided discovery answers and provenance, editable workflow steps and atomic tasks, per-task deterministic scores/risks/recommendations, revision-aware stale analysis invalidation, stored FDE review notes, guarded **local-demo-only** finalization and reopen, and an append-only event trail with soft deletion. The FastAPI `/api/v1/analysis/preview` stateless endpoint remains available. No LLM is required.
 
-**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, data retention and backup policy, formal report export, secure production signoff, multi-user concurrency controls, and cloud deployment. The optional provider connector is present but OFF by default and restricted to approved synthetic/non-sensitive local data. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
+**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, data retention and backup policy, PDF rendering, secure production signoff, multi-user concurrency controls, and cloud deployment. The optional provider connector is present but OFF by default and restricted to approved synthetic/non-sensitive local data. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
 
 The [implementation planner](main-planner.md) tracks completed checks and remaining gates.
+
+**Phase 4:** read-only version-bound Markdown/HTML report downloads, deterministic architecture/PoC suggestions, synthetic offline golden evaluations, end-to-end demo exports, and local-only Docker Compose scaffolding are implemented. See [demo guide](docs/demo.md) and [evaluation limitations](docs/evaluation.md). Browser Streamlit smoke and real Docker boot are not verified here.
 
 ## Run locally — no GitHub runners
 
@@ -52,6 +54,7 @@ Enter that same secret in the review tab's password field when finalizing or reo
 3. Create one or more workflows, add ordered steps and at least one atomic task per step; save JSON suitability signals, business actions, and optional risks.
 4. Analyze saved workflows. Results use the same deterministic `rules-v1` engine as the Phase 1 preview, including explicit policy hits and missing evidence warnings.
 5. Record a review with rationale and an override reason whenever departing from proposed categories. If the local reviewer token is configured, finalize the **demo assessment**. Finalized assessments are read-only until explicitly reopened.
+6. Open **7 · Reports** to download Markdown/HTML describing each task, deterministic score, source, missing evidence, controls, optional AI suggestions, and the provisional FDE decision. Editing input invalidates the export until analysis is refreshed.
 
 Any change to intake, answers, workflows, steps, or tasks increments `revision` and invalidates stored analysis. Re-run analysis before recording or finalizing a new review. Earlier reviews and audit history are retained and labeled by revision. Soft-deleted assessments are hidden without destroying audit records.
 
@@ -84,6 +87,7 @@ Any change to intake, answers, workflows, steps, or tasks increments `revision` 
 | GET | `/api/v1/assessments/{id}/audit` | Read local audit events |
 | POST | `/api/v1/assessments/{id}/ai/{feature}` | Opt-in, structured suggestion only; six supported features |
 | GET | `/api/v1/assessments/{id}/ai-runs` | Saved, revision-aware AI proposals |
+| GET | `/api/v1/assessments/{id}/report?format=markdown\|html` | Download read-only, current-revision Markdown or HTML report; returns 409 for stale analysis |
 
 See OpenAPI for exact request schemas and validation errors. The rules-only endpoints never call an AI model. The opt-in advisor endpoints may call the configured external provider, but never execute financial, customer, or operational actions.
 
@@ -110,6 +114,9 @@ The test suite uses isolated SQLite database files and offline FastAPI TestClien
 - [ADR-0001: Modular monolith](docs/decisions/0001-modular-monolith.md)
 - [ADR-0002: Persistent local MVP](docs/decisions/0002-phase2-persistence.md)
 - [ADR-0003: Guarded structured AI](docs/decisions/0003-structured-ai.md)
+- [ADR-0004: Read-only reports and offline evaluations](docs/decisions/0004-reports-offline-evaluation.md)
+- [Evaluation fixtures and caveats](docs/evaluation.md)
+- [Demo runbook](docs/demo.md)
 - [Main implementation planner](main-planner.md)
 
 ## License
@@ -165,3 +172,18 @@ operator-verified current values for your chosen model. Then each successful
 proposal records a rough USD estimate from reported input/output token usage.
 Without all three, cost remains **unknown**; no hardcoded provider prices are
 invented. These estimates may omit fees outside token charges, and prices change.
+
+
+## Phase 4: reports, synthetic golden evaluation, and offline demo
+
+Reports are generated directly from the current saved assessment and analysis revision; no report call uses a model or mutates the database. Both formats are built from the same content model, escape user/model text and label unverified/stale AI proposals. The HTML attachment has a restrictive Content Security Policy. The API rejects stale or missing analyses (HTTP 409); exports never mean rollout approval. PDF remains optional/deferred.
+
+```bash
+python -m app.evaluation                  # four curated policy expectations; no network
+python -m scripts.demo --output demo_out  # three in-memory API demos + six reports
+python -m pytest -q                      # local tests; no GitHub Actions runner
+# Or run Docker Compose on host loopback for a local synthetic-data demo:
+docker compose up --build
+```
+
+**Evidence limitations:** Curated results are policy regression checks, not estimates of real-world AI accuracy or ROI. Streamlit browser and Docker engine smoke tests have not been run in the available environment. The full merged Phase 3+4 suite needs a local run before any release. No external provider calls are part of the demo; no authorization, tenancy, production security review or operational rollback has been delivered.

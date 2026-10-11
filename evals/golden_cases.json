@@ -1,0 +1,149 @@
+{
+  "dataset_version": "4.0",
+  "description": "Synthetic hand-authored contrastive assessments, not real-world calibration.",
+  "cases": [
+    {
+      "id": "ai-support",
+      "scenario": {
+        "title": "Knowledge-base support triage",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Classify customer ticket",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Extract intent and route ticket",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "output_verifiable": true,
+                  "data_available": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Misrouted ticket",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "strong_ai_candidate",
+      "expected_controls": false,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "exact-pricing",
+      "scenario": {
+        "title": "Exact pricing calculation",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Compute fee",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Apply shipping and tax rules",
+                "decision_type": "deterministic",
+                "signals": {
+                  "deterministic_rules": true,
+                  "exact_math": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "traditional_software",
+      "expected_controls": false,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "hybrid-refund",
+      "scenario": {
+        "title": "Refund email workflow",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Review refund",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Extract request and prepare refund recommendation",
+                "decision_type": "mixed",
+                "actions": [
+                  "issue_refund"
+                ],
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "requires_authoritative_lookup": true,
+                  "high_consequence": true,
+                  "action_irreversible": true,
+                  "human_review_available": true,
+                  "data_available": true,
+                  "output_verifiable": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Wrong refund",
+                    "impact": 4,
+                    "likelihood": 4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "ai_human_approval",
+      "expected_controls": true,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "privacy-blocked",
+      "scenario": {
+        "title": "Sensitive data without provider permission",
+        "steps": [
+          {
+            "id": "s-priv",
+            "name": "Classify sensitive ticket",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t-priv",
+                "title": "Classify confidential customer note",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "sensitive_data": true,
+                  "provider_data_permitted": false
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expected_controls": true,
+      "expect_roi_missing": true,
+      "required_rule": "PRIV-001"
+    }
+  ]
+}

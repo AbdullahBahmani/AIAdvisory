@@ -1,0 +1,13 @@
+{
+  "version": "4.0",
+  "headings": [
+    "Executive summary",
+    "Business value and limitations",
+    "Discovery evidence",
+    "Workflow, task scores, risks, and decisions",
+    "Analysis warnings and evidence gaps",
+    "Architecture, PoC, and evaluation proposals",
+    "FDE review and final decision",
+    "Next steps and no-rollout disclaimer"
+  ]
+}

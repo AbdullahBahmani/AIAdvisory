@@ -2,6 +2,7 @@
 
 import json
 import os
+from ui.reporting import render_report_tab
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -438,7 +439,7 @@ def main() -> None:
 
     st.set_page_config(page_title="AI Opportunity Advisor", page_icon="🧭", layout="wide")
     st.title("AI Opportunity Advisor")
-    st.caption("Phase 3 · Persistent rules-only assessments + opt-in structured AI proposals")
+    st.caption("Phase 4 · Persistent advisory assessments, optional AI proposals and report exports")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
     st.warning("Local developer demo only — synthetic, non-sensitive data. No authentication or tenancy.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
@@ -448,8 +449,8 @@ def main() -> None:
         assessment = _dashboard(st, base_url)
         if assessment:
             st.caption(f"Status: {assessment['status']} · Revision: {assessment['revision']} · ID: {assessment['id']}")
-            intake, discovery, workflow, analysis, advisor, review = st.tabs([
-                "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review",
+            intake, discovery, workflow, analysis, advisor, review, report = st.tabs([
+                "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review", "7 · Reports",
             ])
             with intake:
                 _intake(st, base_url, assessment)
@@ -463,6 +464,8 @@ def main() -> None:
                 _ai_advisor(st, base_url, assessment)
             with review:
                 _review(st, base_url, assessment)
+            with report:
+                render_report_tab(st, base_url, assessment)
         with st.expander("Stateless rules-only preview (legacy Phase 1)"):
             raw = st.text_area("Preview JSON", value=json.dumps(DEMO_PAYLOAD, indent=2), height=220)
             if st.button("Run preview"):

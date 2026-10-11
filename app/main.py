@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app.api.assessments import router as assessments_router
 from app.api.advisor import router as advisor_router
+from app.api.reports import router as reporting_router
 from pydantic import BaseModel
 
 from app.domain.schemas import (
@@ -21,7 +22,7 @@ APP_VERSION = "0.4.0"
 app = FastAPI(
     title="AI Opportunity Advisor API",
     version=APP_VERSION,
-    description="Local-only human-led assessments and optional gated AI proposals.",
+    description="Local demo: human-led assessment, optional AI proposals and revision-bound reports.",
 )
 
 
@@ -57,3 +58,4 @@ def preview_analysis(payload: AssessmentPreviewRequest) -> AssessmentPreviewResp
 
 app.include_router(assessments_router)
 app.include_router(advisor_router)
+app.include_router(reporting_router)

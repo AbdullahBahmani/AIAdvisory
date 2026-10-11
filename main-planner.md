@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 3 implemented and locally validated (72 offline tests, Alembic upgrades through 0003_ai_cost and no schema drift). Six gated structured AI features, reviewer-approved task acceptance, exact question duplicate suppression, and optional source-backed cost estimates are committed. No GitHub runners. External live provider and Streamlit browser tests, Python 3.12 dependency lock, Ruff, identity/tenancy and real-data privacy certification are outstanding.
+**Status:** Phase 4 report/export, curated offline evaluation (4/4 fixtures), and three saved-workflow demo exports implemented on top of Phase 3; 59 tests passed against a reconstructed Phase 2 + Phase 4 local workspace. Full merged Phase 3+4 suite, real Docker/UI startup, Ruff and dependency lock remain unverified. No GitHub runners used. Production/security gates remain open.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -288,15 +288,15 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit (local/offline verified 2026-10-11):** All eight Phase 3 implementation task groups are implemented for the **local synthetic-data demo**. Six strict proposal schemas/handlers and Streamlit advisor, default-off provider, per-request consent + 16+ character access token, task-level privacy blocks, 30 successful proposal cap, bounded retries/errors, versioned prompt/schema provenance, revision-based staleness, anti-duplicate exact question checks, contradiction flags, task/step ID validation, policy precedence, optional operator-sourced token-cost estimates, token-guarded explicit human task acceptance and audit event; accepted drafts do not infer any signals/actions and invalidate previous analysis. **72 local automated tests passed**; Alembic 0001→0002→0003 and schema drift check passed. **Remaining verification & production gates:** no live model call or browser-based Streamlit test was performed; semantic paraphrase de-duplication is heuristic/not guaranteed, current provider pricing must be supplied/verified, no authenticated tenancy/DLP/compliance, no resolved Python 3.12 lock/Ruff verification. These limit production readiness but not local Phase 3 implementation.
 
 ### Phase 4 — Reports, evaluation, and demo (days 22–27)
-- [ ] P4-01 Build comprehensive Markdown/HTML assessment report (executive summary, workflow, decomposition, scores, assumptions/evidence, risks, AI/non-AI boundaries, architecture, evaluation, PoC, open questions, final FDE decision).
-- [ ] P4-02 Add report export UI; PDF optional after the report content is correct.
-- [ ] P4-03 Add evaluation dataset, gold expectations, outcome metrics and regression runner; measure decision quality and unknown-data handling.
-- [ ] P4-04 Add snapshot/golden tests for reports, deterministic verdict explanations and status/override history.
-- [ ] P4-05 Add Dockerfile and Compose local deployment; verify migrations, health and startup with no AI key.
-- [ ] P4-06 Run and document three complete demos (AI / non-AI / hybrid) showing an FDE decision and export.
-- [ ] P4-07 Document architectural and evaluation trade-offs, known limitations and screenshots/demo script.
+- [x] P4-01 Build comprehensive Markdown/HTML assessment report (executive summary, workflow, decomposition, scores, assumptions/evidence, risks, AI/non-AI boundaries, architecture, evaluation, PoC, open questions, final FDE decision).
+- [x] P4-02 Add report export UI; PDF optional after the report content is correct.
+- [ ] P4-03 Add evaluation dataset, gold expectations, outcome metrics and regression runner; measure decision quality and unknown-data handling. **Partial:** four synthetic golden cases and CLI regression runner pass, including unknown ROI; representative field-quality and outcome metrics still require a validated dataset/pilot.
+- [x] P4-04 Add snapshot/golden tests for reports, deterministic verdict explanations and status/override history.
+- [ ] P4-05 Add Dockerfile and Compose local deployment; verify migrations, health and startup with no AI key. **Partial:** Dockerfile/Compose committed with loopback bindings; YAML parsed, local SQLite migration checked on reconstructed Phase 2 schema; Docker runtime boot and full Phase 3 migration smoke not verified.
+- [x] P4-06 Run and document three complete demos (AI / non-AI / hybrid) showing an FDE decision and export.
+- [ ] P4-07 Document architectural and evaluation trade-offs, known limitations and screenshots/demo script. **Partial:** ADR-0004, evaluation caveats, and reproducible demo runbook delivered; browser screenshots remain outstanding.
 
-**Exit:** Reproducible demo and export show that the system can recommend *against* AI and handle high-risk hybrid cases correctly.
+**Exit (local demonstration):** Three in-memory persistence/API demo workflows produce Markdown+HTML reports showing AI, traditional software, and human-approved hybrid outcomes. Four offline curated policy fixtures pass. 59 tests on reconstructed Phase 2+new Phase 4 code pass; full merged Phase 3+4 suite, a live Streamlit browser check, Docker boot, and operational/real-data evaluation are **still pending**, so Phase 4 is not production validated.
 
 ### Phase 5 — Production-readiness gate (days 28–30 for assessment; hardening may take longer)
 - [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route.
