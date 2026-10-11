@@ -1,0 +1,26 @@
+# Environments / Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local-only config and data
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite3
+*.db
+.streamlit/secrets.toml
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

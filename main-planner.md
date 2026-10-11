@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Planning complete; implementation not started.
+**Status:** Phase 0 foundation built and locally smoke-tested; dependency resolution lock and hosted CI verification pending. Phase 1 not started.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -243,13 +243,13 @@ Recommended local assessment state transitions: **draft → discovering → anal
 Each checkbox is a trackable task; update this section as implementation progresses. **Do not mark completed until code, tests, and acceptance evidence are present.**
 
 ### Phase 0 — Repository and technical foundation (days 1–2)
-- [ ] P0-01 Copy/normalize the uploaded blueprint into docs/blueprint.md for in-repo reference; preserve attribution to original uploaded document and version.
-- [ ] P0-02 Replace placeholder README with scope, architecture, safety principle, local start, development workflow, and feature status.
-- [ ] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control.
-- [ ] P0-04 Add FastAPI health endpoint, Streamlit smoke page, CI, and local run commands.
-- [ ] P0-05 Record architecture ADR (Streamlit/FastAPI/SQLite initially; modular monolith; optional LLM); write a short threat-model draft.
+- [x] P0-01 Copy/normalize the uploaded blueprint into docs/blueprint.md for in-repo reference; preserve attribution to original uploaded document and version.
+- [x] P0-02 Replace placeholder README with scope, architecture, safety principle, local start, development workflow, and feature status.
+- [ ] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control. **Implementation note:** project/packaging, CI lint/test config, .gitignore, and .env.example are present, but a reproducible transitive dependency lock still must be resolved and committed in a network-enabled environment.
+- [x] P0-04 Add FastAPI health endpoint, Streamlit smoke page, CI, and local run commands.
+- [x] P0-05 Record architecture ADR (Streamlit/FastAPI/SQLite initially; modular monolith; optional LLM); write a short threat-model draft.
 
-**Exit:** Fresh clone boots API and UI; health smoke test and CI pass; no credentials required for rules-only mode.
+**Exit verification (2026-10-11):** Four local API/UI-adapter smoke tests passed; editable package install without dependencies passed; TOML/YAML parsed. GitHub-hosted CI and actual Streamlit boot must still be checked because the available local runtime lacks the Streamlit and Ruff packages. Lock remains pending; therefore the strict Phase 0 exit gate is **not yet fully verified**.
 
 ### Phase 1 — Deterministic assessment engine (days 3–7)
 - [ ] P1-01 Define typed schemas/enums for organizations, assessments, workflows, tasks, six categories, questions, answers, evidence, risks, controls, scores, decisions.
