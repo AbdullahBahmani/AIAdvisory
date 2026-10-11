@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 2 local-only persistent assessment MVP implemented (49 offline tests, SQLite migration and Alembic schema check passed, live API smoke passed). No GitHub Actions runners. Authentication/tenant-scoped FDE sign-off, dependency lock, Ruff, and live Streamlit browser verification remain pending; production deployment is prohibited.
+**Status:** Phase 3 structured, opt-in AI advisor committed (69 offline tests; SQLite Alembic upgrade and schema drift check passed). Provider disabled by default, local AI token + explicit data attestation required; no GitHub runner. Remaining: exact provider cost estimates, deterministic AI-question de-duplication, one-click human acceptance UI, live external-provider/Streamlit verification, auth/tenancy, dependency lock and Ruff.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -276,16 +276,16 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit (local demo verified on 2026-10-11):** Rules-only assessment can be created, edited, persisted, reloaded, analyzed per task, reviewed and locally finalized with an explicitly configured reviewer token. 49 offline tests pass, a fresh SQLite Alembic migration and `alembic check` pass, and live `/health` and `/openapi.json` return 200. **Not production complete:** actual authentication and tenant-scoped authorization, Ruff/dependency lock and Streamlit browser smoke remain open. The shared token is a demo-only gate, never rollout authority.
 
 ### Phase 3 — Structured AI assistant (days 15–21)
-- [ ] P3-01 Implement provider adapter, flags/env, timeouts/cost logging, mock provider and no-provider fallback.
-- [ ] P3-02 Implement versioned discovery prompt + schema, single next-best question, non-repetition and contradiction signals.
-- [ ] P3-03 Implement editable workflow-decomposition suggestions with human acceptance.
-- [ ] P3-04 Implement AI-assisted missing-information/risk suggestions; keep rule classifications and hard controls authoritative.
-- [ ] P3-05 Implement architecture pattern comparison, agent-vs-workflow rationale, evaluation/PoC suggestion schema.
-- [ ] P3-06 Implement challenge mode: arguments against, weak assumptions, evidence to change decision, simpler option.
-- [ ] P3-07 Add provider error handling, retry limits, privacy gating, provenance and adversarial prompt-injection tests.
-- [ ] P3-08 Validate that complete end-to-end workflow still works with AI **disabled**.
+- [ ] P3-01 Implement provider adapter, flags/env, timeouts/cost logging, mock provider and no-provider fallback. **Partial:** Adapter is opt-in with timeout, one transient retry, mocked tests, token usage and latency provenance. Accurate currency cost tracking is pending verified model-specific prices.
+- [ ] P3-02 Implement versioned discovery prompt + schema, single next-best question, non-repetition and contradiction signals. **Partial:** Versioned JSON schema and highest-value question prompt exist; deterministic generated-question de-duplication and contradiction reconciliation remain pending.
+- [ ] P3-03 Implement editable workflow-decomposition suggestions with human acceptance. **Partial:** Strict per-step editable task suggestions persist for review, but acceptance is currently manual entry via existing workflow editor, not a one-click import/approval flow.
+- [x] P3-04 Implement AI-assisted missing-information/risk suggestions; keep rule classifications and hard controls authoritative.
+- [x] P3-05 Implement architecture pattern comparison, agent-vs-workflow rationale, evaluation/PoC suggestion schema.
+- [x] P3-06 Implement challenge mode: arguments against, weak assumptions, evidence to change decision, simpler option.
+- [x] P3-07 Add provider error handling, retry limits, privacy gating, provenance and adversarial prompt-injection tests.
+- [x] P3-08 Validate that complete end-to-end workflow still works with AI **disabled**.
 
-**Exit:** AI genuinely helps with discovery and reasoning, but structured validation and deterministic safeguards remain in charge.
+**Exit (local/offline verified 2026-10-11):** Six typed proposal endpoints and Streamlit advisor tab; model provider explicitly off by default; localhost spend token, per-request data attestation, forbidden-data checks, 30-proposal/assessment cap, revision-based staleness, ID/schema checks, hard-rule veto of unsafe architecture, full rules-only fallback. 69 local automated tests pass, Alembic 0001→0002 and `alembic check` pass. **Not fully complete:** no live provider call was made and no real-data certification, identity/RBAC, validated cost estimator, generated-question de-duplication, or one-click acceptance; UI browser and Ruff checks remain unverified.
 
 ### Phase 4 — Reports, evaluation, and demo (days 22–27)
 - [ ] P4-01 Build comprehensive Markdown/HTML assessment report (executive summary, workflow, decomposition, scores, assumptions/evidence, risks, AI/non-AI boundaries, architecture, evaluation, PoC, open questions, final FDE decision).
@@ -344,7 +344,7 @@ An FDE can, using the app and not manual DB edits:
 
 ## 13. Start-here checklist and sequencing decisions
 
-**Implementation progress:** Phases 0 (except lock/tooling checks), 1, and local-demo Phase 2 are implemented on `main`. Phase 2 has no hosted runners and is not approved for real/sensitive information. Next: resolve local tool/Streamlit validation and authentication/tenancy gate before any nonlocal deployment; begin Phase 3 AI integration only behind explicit provider-data governance and rules-only fallback.
+**Implementation progress:** Phases 1 and 2 (local demo) are implemented; Phase 3 has gated, offline-tested AI proposals but is intentionally not production-ready. P0 lock/Ruff, P3 cost/de-duplication/one-click acceptance, and P5 identity, tenant and privacy gates remain open. No hosted runners are used. Next: complete P3 polish or advance to Phase 4 report/evaluation behind synthetic-data restrictions.
 
 **Recommended implementation PR order:**
 1. Project scaffold and docs

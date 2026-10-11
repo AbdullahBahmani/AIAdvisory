@@ -4,11 +4,11 @@ A **human-led, rules-first** decision-support app for discovering workflows, eva
 
 > **AI assists. Rules enforce. Data informs. Humans decide.** This project never authorizes production rollout or executes customer/business actions.
 
-## Project status (Phase 2)
+## Project status (Phase 3)
 
 **Implemented:** persistent local assessments, guided discovery answers and provenance, editable workflow steps and atomic tasks, per-task deterministic scores/risks/recommendations, revision-aware stale analysis invalidation, stored FDE review notes, guarded **local-demo-only** finalization and reopen, and an append-only event trail with soft deletion. The FastAPI `/api/v1/analysis/preview` stateless endpoint remains available. No LLM is required.
 
-**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, external AI provider, data retention and backup policy, formal report export, secure production signoff, multi-user concurrency controls, and cloud deployment. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
+**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, data retention and backup policy, formal report export, secure production signoff, multi-user concurrency controls, and cloud deployment. The optional provider connector is present but OFF by default and restricted to approved synthetic/non-sensitive local data. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
 
 The [implementation planner](main-planner.md) tracks completed checks and remaining gates.
 
@@ -82,8 +82,10 @@ Any change to intake, answers, workflows, steps, or tasks increments `revision` 
 | POST | `/api/v1/assessments/{id}/final-decision` | Guarded **local-demo-only** finalization |
 | POST | `/api/v1/assessments/{id}/reopen` | Guarded reopen |
 | GET | `/api/v1/assessments/{id}/audit` | Read local audit events |
+| POST | `/api/v1/assessments/{id}/ai/{feature}` | Opt-in, structured suggestion only; six supported features |
+| GET | `/api/v1/assessments/{id}/ai-runs` | Saved, revision-aware AI proposals |
 
-See OpenAPI for exact request schemas and validation errors. API requests never call a live AI model or execute financial, customer, or operational actions.
+See OpenAPI for exact request schemas and validation errors. The rules-only endpoints never call an AI model. The opt-in advisor endpoints may call the configured external provider, but never execute financial, customer, or operational actions.
 
 ## Local verification
 
@@ -107,8 +109,50 @@ The test suite uses isolated SQLite database files and offline FastAPI TestClien
 - [Security and deployment boundaries](docs/security.md)
 - [ADR-0001: Modular monolith](docs/decisions/0001-modular-monolith.md)
 - [ADR-0002: Persistent local MVP](docs/decisions/0002-phase2-persistence.md)
+- [ADR-0003: Guarded structured AI](docs/decisions/0003-structured-ai.md)
 - [Main implementation planner](main-planner.md)
 
 ## License
 
 No open-source license is granted unless the repository owner adds one.
+
+
+## Phase 3: optional structured AI proposals (local synthetic-data demo only)
+
+Six optional actions are available in the **AI advisor** tab: discovery question,
+workflow task decomposition, risk suggestions, architecture trade-offs, evaluation
+plan and FDE challenge. Suggestions are strictly schema validated and recorded in
+`ai_runs`, with model, schema/prompt version, token counts and request latency.
+They never write canonical tasks/risks, policy scores, workflow states or approvals.
+Review and copy suggestions into the normal workflow editor only after verification.
+Editing an assessment marks older proposals as **stale**.
+
+The API starts in **rules-only mode**, requiring no AI credentials. For a LOCAL
+synthetic-data experiment only, set these server environment variables **outside**
+version control:
+
+```bash
+export ADVISORY_AI_ENABLED=1
+export ADVISORY_AI_ACCESS_TOKEN='generate-a-random-local-demo-secret-16-plus-chars'
+export ADVISORY_AI_API_KEY='use-an-actual-key-from-your-secret-manager'
+export ADVISORY_AI_MODEL='gpt-4.1-mini'
+```
+
+Apply migrations (`alembic upgrade head`) and run API/UI as documented above.
+To call `/api/v1/assessments/{id}/ai/{feature}`, send
+`{"send_to_provider":true,"approved_non_sensitive_data":true}`. Send the `X-AI-Access-Token` header with your local secret. There is a cap of
+30 saved proposals per assessment; this is only a spend guard, not rate limiting.
+This is
+**explicit per-request attestation, not compliance-grade consent**. Do not send real
+customer data, PII, secrets, regulated information or anything sensitive to this
+local-demo service; it has no authentication, tenant scoping, data-residency review or
+DLP enforcement. The backend additionally blocks task signals indicating forbidden
+provider permissions or sensitive data without explicit provider permission. The
+model is never given callable tools, and prompt injection in input data cannot
+execute repository or business actions. AI failures return safe errors; deterministic
+analysis and final FDE review remain available.
+
+The chat-completions JSON mode is paired with strict Pydantic validation; not every
+model supports JSON mode, so configure an appropriate model. Provider usage incurs
+external cost, and the adapter retries one transient rate-limit/server error.
+Local test command: `python -m pytest -q`. No GitHub Actions runner is used.

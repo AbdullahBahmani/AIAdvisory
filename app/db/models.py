@@ -39,6 +39,7 @@ class AssessmentRow(Base):
     answers: Mapped[list["AnswerRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AnswerRow.created_at")
     reviews: Mapped[list["ReviewRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="ReviewRow.created_at")
     audit_events: Mapped[list["AuditRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AuditRow.created_at")
+    ai_runs: Mapped[list["AIRunRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AIRunRow.created_at")
 
 
 class WorkflowRow(Base):
@@ -115,3 +116,21 @@ class AuditRow(Base):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
+
+
+class AIRunRow(Base):
+    __tablename__ = "ai_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    feature: Mapped[str] = mapped_column(String(30), nullable=False)
+    proposal: Mapped[dict] = mapped_column(JSON, nullable=False)
+    provider: Mapped[str] = mapped_column(String(60), nullable=False)
+    model: Mapped[str] = mapped_column(String(150), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    schema_version: Mapped[str] = mapped_column(String(30), nullable=False)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    assessment: Mapped[AssessmentRow] = relationship(back_populates="ai_runs")

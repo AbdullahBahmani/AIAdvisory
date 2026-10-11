@@ -41,3 +41,33 @@ Authentication/authorization, data segregation, secret handling, audit trails, r
 - Analysis uses a pure rules engine. Input edits invalidate the persisted analysis, review notes retain their original revision, and hard risk/privacy controls remain independent from reviewer comments.
 - Deletion is soft: an audit record is retained. No API mutates audit events directly. Audit tamper-resistance and formal retention are future hardening tasks.
 - For any external deployment: add authenticated users, tenant-scoped queries, RBAC on EVERY endpoint and export, CSRF/session controls, concurrency protection, encrypted database/backups, rate/payload limits, privacy/retention policy and a threat-model review.
+
+
+## Phase 3 delta — external provider opt-in (demo only)
+
+- `ADVISORY_AI_ENABLED` defaults off. A separate local
+  `ADVISORY_AI_ACCESS_TOKEN` (16+ characters) is required for every AI POST;
+  the local demo caps requests at 30 proposals per assessment. Neither is
+  real authentication, a global rate limiter, or a financial guarantee. With no provider key, deterministic
+  discovery/scoring/analysis stays functional. No provider calls occur in offline tests.
+- Every AI POST requires **both** affirmative `send_to_provider` and
+  `approved_non_sensitive_data`. This is a user attestation, **not identity, DLP,
+  legal consent, or data-residency compliance**. Keep real client data out.
+- Server additionally blocks false `provider_data_permitted` / `permission_to_use_data`
+  or a `sensitive_data` flag without explicit provider permission. Unknown
+  sensitivity is still a deployment risk; no automated classifier exists.
+- Provider host is fixed to HTTPS `api.openai.com`, no arbitrary user-controlled
+  endpoint; keys remain server-side. Only the selected data subset is sent,
+  and AI has no tools to call or actions to execute. Stored proposals include
+  validated output and provenance only, not prompts or keys. Local DB still
+  lacks encryption/tenant controls, so no real personal/confidential data.
+- Structured JSON is validated with Pydantic extra-field rejection, length
+  bounds and task-reference checks. Model output is untrusted, and any
+  architecture suggestion overriding a deterministic or approval gate is rejected.
+  This is defense-in-depth, **not a proof against all prompt injection**.
+- External requests use bounded timeouts and a single transient retry. HTTP
+  errors expose sanitized messages. Provider pricing is **not** independently
+  computed here; token totals are recorded, not cost claims. Usage is therefore
+  a proxy, and budget/rate-limits and model-provider policy review remain needed.
+- AI-run GET/POST remain **unauthenticated local-demo endpoints**. Never bind
+  to a public interface, publish via tunnel, or use real customer data.

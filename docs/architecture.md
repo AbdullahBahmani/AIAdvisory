@@ -46,3 +46,27 @@ Local browser (synthetic data only)
 ## Operational validation
 
 Run `python -m pytest -q`, `python -m compileall -q app ui tests migrations`, `python -m alembic upgrade head`, `python -m alembic check` locally. Do not add GitHub hosted runners.
+
+
+## Phase 3: bounded optional AI proposals
+
+`app/api/advisor.py` exposes six opt-in features (`discovery`, `workflow`,
+`risk`, `architecture`, `evaluation`, `challenge`) backed by
+`app/ai/provider.py`, `app/ai/service.py`, versioned prompts, and strict
+Pydantic response schemas. The standard `POST /analyze` route and the rules
+engine remain deterministic and have no AI dependency.
+
+Input policy checks run before model invocation: explicit server enablement
+plus API key, explicit per-request provider/data approval, and restrictions for
+tasks flagged as sensitive or not provider-permitted. Approved local demo data
+is passed only as bounded structured context. AI receives **no tools**. Returned
+JSON is length-limited, validated strictly, and task/step IDs are checked
+against the current revision. Architecture suggestions contradicting existing
+mandatory human-approval or deterministic-only outcomes are rejected.
+
+Successful proposals persist in `ai_runs` with output schema/prompt version,
+provider/model, latency and token usage (not raw model requests). Input edits
+mark past runs **stale** without changing scores or final decisions. Proposed
+tasks/risks are never auto-applied; FDEs must review and manually enter
+accepted suggestions through Phase 2 forms. The new tab is deliberately
+not an agent or autonomous workflow executor.

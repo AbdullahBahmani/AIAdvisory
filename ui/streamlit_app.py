@@ -42,7 +42,8 @@ def fetch_api_health(base_url: str, timeout: float = 3.0) -> dict[str, str]:
 
 def api_request(
     base_url: str, method: str, path: str, payload: dict | None = None,
-    *, reviewer_token: str | None = None, timeout: float = 12.0,
+    *, reviewer_token: str | None = None, ai_access_token: str | None = None,
+    timeout: float = 12.0,
 ):
     """Make a validated JSON request; errors propagate for visible Streamlit feedback."""
     if not path.startswith("/api/v1/"):
@@ -50,6 +51,8 @@ def api_request(
     headers = {"Accept": "application/json"}
     if reviewer_token:
         headers["X-Reviewer-Token"] = reviewer_token
+    if ai_access_token:
+        headers["X-AI-Access-Token"] = ai_access_token
     data = None
     if payload is not None:
         headers["Content-Type"] = "application/json"
@@ -318,6 +321,61 @@ def _analysis(st, base_url: str, assessment: dict):
         _show_recommendations(st, result)
 
 
+
+AI_FEATURES = ["discovery", "workflow", "risk", "architecture", "evaluation", "challenge"]
+
+
+def request_ai_proposal(base_url: str, assessment_id: str, feature: str, *,
+                        approved: bool, access_token: str | None = None) -> dict:
+    """Request untrusted advisory JSON; never apply it to canonical tasks or scores."""
+    if feature not in AI_FEATURES:
+        raise ValueError("Unsupported AI feature")
+    if not approved:
+        raise ValueError("Explicit approval for synthetic provider data required")
+    if not access_token:
+        raise ValueError("Local AI access token required")
+    result = api_request(base_url, "POST",
+                         f"/api/v1/assessments/{assessment_id}/ai/{feature}",
+                         {"send_to_provider": True, "approved_non_sensitive_data": True},
+                         ai_access_token=access_token, timeout=30.0)
+    if not isinstance(result, dict) or result.get("advisory_only") is not True:
+        raise ValueError("Invalid advisory response")
+    return result
+
+
+def _ai_advisor(st, base_url: str, assessment: dict):
+    aid = assessment["id"]
+    st.warning("Experimental AI suggestions only. Synthetic or explicitly approved non-sensitive "
+               "data; no production use, autonomous actions or rollout approvals.")
+    st.info("AI must be enabled on the API server. Rules and required approvals always take precedence.")
+    feature = st.selectbox("Advisory task", AI_FEATURES)
+    access_token = st.text_input("Local AI access token (API server ADVISORY_AI_ACCESS_TOKEN)",
+                                 type="password")
+    approved = st.checkbox("I explicitly approve sending this assessment's synthetic/non-sensitive "
+                           "content to the configured external AI provider for this request")
+    if st.button("Generate AI suggestion", disabled=not approved or not access_token or assessment["status"] == "finalized"):
+        try:
+            request_ai_proposal(base_url, aid, feature, approved=approved,
+                                access_token=access_token)
+        except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+            st.error(_api_error(exc))
+        else:
+            st.success("Proposal saved for review. It has not modified the workflow or final decision.")
+            st.rerun()
+    runs = api_request(base_url, "GET", f"/api/v1/assessments/{aid}/ai-runs")
+    if not runs:
+        st.info("No AI proposals recorded. The complete rules-only workflow remains available.")
+    for run in runs:
+        with st.expander(f"{run['feature']} · {run['model']} · assessment revision {run['assessment_revision']}"):
+            if run.get("stale"):
+                st.warning("Stale proposal: underlying assessment was edited. Re-evaluate before use.")
+            st.json(run["proposal"])
+            st.caption("Advisory only — manually verify and, if appropriate, enter proposed tasks or "
+                       "risks using the normal workflow forms. No automatic acceptance or approvals.")
+            st.caption(f"Prompt {run['prompt_version']} · schema {run['schema_version']} "
+                       f"· {run['elapsed_ms']} ms · tokens {run.get('input_tokens')}/"
+                       f"{run.get('output_tokens')}")
+
 def _review(st, base_url: str, assessment: dict):
     aid = assessment["id"]
     st.warning("Local demo review only. A typed reviewer name is NOT authenticated identity. No rollout approval.")
@@ -353,7 +411,7 @@ def main() -> None:
 
     st.set_page_config(page_title="AI Opportunity Advisor", page_icon="🧭", layout="wide")
     st.title("AI Opportunity Advisor")
-    st.caption("Phase 2 · Persistent local assessments, rules-only analysis and review")
+    st.caption("Phase 3 · Persistent rules-only assessments + opt-in structured AI proposals")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
     st.warning("Local developer demo only — synthetic, non-sensitive data. No authentication or tenancy.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
@@ -363,8 +421,8 @@ def main() -> None:
         assessment = _dashboard(st, base_url)
         if assessment:
             st.caption(f"Status: {assessment['status']} · Revision: {assessment['revision']} · ID: {assessment['id']}")
-            intake, discovery, workflow, analysis, review = st.tabs([
-                "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · FDE review",
+            intake, discovery, workflow, analysis, advisor, review = st.tabs([
+                "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review",
             ])
             with intake:
                 _intake(st, base_url, assessment)
@@ -374,6 +432,8 @@ def main() -> None:
                 _workflow(st, base_url, assessment)
             with analysis:
                 _analysis(st, base_url, assessment)
+            with advisor:
+                _ai_advisor(st, base_url, assessment)
             with review:
                 _review(st, base_url, assessment)
         with st.expander("Stateless rules-only preview (legacy Phase 1)"):

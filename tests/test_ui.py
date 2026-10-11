@@ -66,3 +66,18 @@ def test_json_helpers_require_correct_shapes():
     assert _json_object("{}", "Signals") == {}
     with pytest.raises(ValueError):
         _json_object("[]", "Signals")
+
+
+def test_ai_ui_adapter_requires_attestation_and_does_not_write_edits():
+    from ui.streamlit_app import request_ai_proposal
+    with pytest.raises(ValueError, match="Explicit approval"):
+        request_ai_proposal("http://127.0.0.1:8000", "a1", "discovery", approved=False)
+    fake = FakeResponse(json.dumps({"advisory_only": True, "proposal": {"question": "Why?"}}).encode())
+    with patch("ui.streamlit_app.urlopen", return_value=fake) as call:
+        out = request_ai_proposal("http://127.0.0.1:8000", "a1", "discovery", approved=True, access_token="local-secret")
+    req = call.call_args.args[0]
+    assert req.get_method() == "POST"
+    assert req.full_url.endswith("/api/v1/assessments/a1/ai/discovery")
+    assert json.loads(req.data) == {"send_to_provider": True, "approved_non_sensitive_data": True}
+    assert req.get_header("X-ai-access-token") == "local-secret"
+    assert out["advisory_only"]
