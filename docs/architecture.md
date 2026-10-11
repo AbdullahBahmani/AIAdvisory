@@ -1,35 +1,48 @@
-# Architecture — Phase 1 decision engine
+# Architecture — Phase 2 persistent local MVP
 
-The application remains an intentionally small modular monolith (see [ADR-0001](decisions/0001-modular-monolith.md)). FastAPI is the only API boundary; Streamlit is an optional stateless HTTP client.
+Phase 2 extends the rules-only modular monolith (ADR-0001) with a relational persistence layer. Streamlit remains a thin HTTP client; no UI access to SQLAlchemy or internal scoring functions.
 
 ```text
-Local Streamlit UI
-      ↓ POST /api/v1/analysis/preview or /discovery/next-question
-FastAPI validation (Pydantic, extra=forbid)
-      ↓
-Assessment orchestration (pure function)
-      ├── suitability and readiness rubrics
-      ├── deterministic policy hits (approval/privacy/action gates)
-      ├── risk × impact/likelihood matrix
-      ├── evidence-sensitive value calculation (Decimal)
-      └── conservative recommendation with explicit alternatives & evidence gaps
-      ↓
-Per-task result + stable rules-v1 version marker (no writes, no execution)
+Local browser (synthetic data only)
+  └─ Streamlit wizard: intake / discovery / workflow / analysis / FDE review
+        └─ HTTP calls to FastAPI /api/v1/
+              ├─ Pydantic input validation + response schemas
+              ├─ SQLAlchemy transactional persistence (Alembic schema)
+              │    ├─ assessments, workflows, workflow_steps, tasks
+              │    ├─ answers with source/kind/confidence
+              │    ├─ reviews and audit_events
+              │    └─ revision-stamped immutable JSON analysis snapshots
+              └─ Pure deterministic assessment engine (rules-v1)
+                   ├─ suitability scores and factor coverage
+                   ├─ data/technical-readiness rubrics
+                   ├─ risks and hard policy gates
+                   └─ recommendation and traditional-software alternatives
 ```
 
-## Local API contracts
+## Input revision and state machine
 
-- `GET /health` — health, version and `rules-only` mode.
-- `GET /api/v1/discovery/questions` — question bank with conditional metadata.
-- `POST /api/v1/discovery/next-question` — facts/assumptions/contradictions, outstanding questions and next question.
-- `POST /api/v1/analysis/preview` — per-task scoring, policy hits, risks, recommendations, advisory warnings.
+- `draft` → `discovering` on first input change → `analyzed` → `in_review` → `finalized`.
+- Any input edit on a nonfinalized assessment increments the revision, removes the current analysis snapshot, and returns to `discovering`. Reanalysis is required before new review.
+- A review records the analysis revision, proposed category, rationale, optional override, and a **self-declared** (not authenticated) reviewer label. Earlier reviews remain available when inputs change.
+- Finalization requires an explicitly configured local token and an existing review for the current revision. The review is marked `is_final`, the assessment becomes read-only, and the audit trail records the event. There is no production authorization capability.
+- Explicit guarded reopen increments the revision and invalidates the old snapshot; older reviews and event history remain.
+- Soft deletion marks a record `deleted` and hides it from public list/get paths while retaining audit rows for later retention-policy design.
 
-This **is not the Phase 2 persistence API**: there is no account, stored assessment, approval workflow, model inference or report generation yet. API calls with confidential data should not be made to public hosts. Missing values are preserved as `null` and score coverage is shown explicitly; `0` remains a true numeric zero. Outputs are reproducible only for the declared version and supplied inputs.
+## Database and migrations
 
-## Security boundary
+- SQLite at `sqlite:///./aiadvisory.sqlite3` by default, PostgreSQL later. Database URL is configured by `DATABASE_URL`.
+- A frozen initial Alembic schema lives at `migrations/versions/0001_initial.py`; run `alembic upgrade head` before starting the API. `alembic check` verifies the ORM and schema agree.
+- Store ordered step/task rows; serialize Pydantic task signals and risk inputs as JSON. Store typed nullable value inputs and the entire analysis result as a separate JSON snapshot, labeled by revision and policy version.
+- API mutations happen inside a single SQLAlchemy transaction and add an audit row; audit history persists when the assessment is soft-deleted. No public event-edit API exists.
+- This local MVP is **not concurrency safe for multi-user writes**: revision bumps are not compare-and-swap updates. Plan optimistic locking and tenant-scoped authorization before real deployment.
 
-No LLM calls, business tool execution, database writes, or final rollout approval. The health endpoint is unauthenticated by design; the whole API should be bound to localhost and used only with synthetic data. A future deployment must enforce auth, tenancy, provider data consent, limits and audit before receiving real assessments.
+## API boundaries and compatibility
 
-## Local quality verification
+- Phase 1 stateless endpoints (`/api/v1/discovery/next-question` and `/api/v1/analysis/preview`) remain for fixtures and integration clients.
+- Phase 2 routes expose assessment/workflow CRUD, conditional answers, saved analysis, review and local token-gated finalization. `GET /openapi.json` documents request/response validation.
+- Streamlit never calls deterministic functions directly and never uses DB credentials.
+- No provider SDKs, no ingestion, no business system writes, no external tooling, and no authenticated/multi-tenant signoff.
 
-`python -m pytest` and `python -m compileall -q app ui tests`. No GitHub runner is required or configured. A lock file and hosted-runtime UI check are outstanding from Phase 0.
+## Operational validation
+
+Run `python -m pytest -q`, `python -m compileall -q app ui tests migrations`, `python -m alembic upgrade head`, `python -m alembic check` locally. Do not add GitHub hosted runners.

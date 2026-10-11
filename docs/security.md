@@ -32,3 +32,12 @@
 ## Blockers to production use
 
 Authentication/authorization, data segregation, secret handling, audit trails, retention/deletion, privacy impact review, threat modeling for AI tools, API rate limits, TLS, monitoring, backup/recovery and deployment hardening have **not** been implemented.
+
+## Phase 2 delta — local persistence and human review boundary
+
+- **No authentication or tenancy yet.** The REST API can read stored assessments without login. Keep it **strictly localhost-only** with dummy/non-sensitive data; do not forward the API/UI through public services or tunneling.
+- SQLite now stores names, evidence, assessments and review notes locally; the database file is ignored by Git. No backup, purge schedule, encryption-at-rest or deletion compliance guarantees exist yet.
+- A 16+-character `ADVISORY_REVIEW_TOKEN` enables only developer-demo finalization/reopen/soft delete via `X-Reviewer-Token`. Missing/wrong token returns 403. **This is not a production identity, authority, or legal sign-off.** Never hardcode or commit the token.
+- Analysis uses a pure rules engine. Input edits invalidate the persisted analysis, review notes retain their original revision, and hard risk/privacy controls remain independent from reviewer comments.
+- Deletion is soft: an audit record is retained. No API mutates audit events directly. Audit tamper-resistance and formal retention are future hardening tasks.
+- For any external deployment: add authenticated users, tenant-scoped queries, RBAC on EVERY endpoint and export, CSRF/session controls, concurrency protection, encrypted database/backups, rate/payload limits, privacy/retention policy and a threat-model review.

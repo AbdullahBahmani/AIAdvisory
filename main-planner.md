@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 1 deterministic analysis preview implemented and locally validated (35 offline tests). Hosted GitHub Actions runner use deliberately removed on owner request; dependency lock and Ruff check remain unavailable in this offline environment. Phase 2 persistence/UI wizard not started.
+**Status:** Phase 2 local-only persistent assessment MVP implemented (49 offline tests, SQLite migration and Alembic schema check passed, live API smoke passed). No GitHub Actions runners. Authentication/tenant-scoped FDE sign-off, dependency lock, Ruff, and live Streamlit browser verification remain pending; production deployment is prohibited.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -264,16 +264,16 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit:** Pure Python engine gives reproducible per-task verdicts, sensible no-AI decisions, all active controls and missing-evidence warnings.
 
 ### Phase 2 — Persistence, APIs, and working UI (days 8–14)
-- [ ] P2-01 Add SQLAlchemy/Alembic schema and test migrations; SQLite local DB, portable design for PostgreSQL.
-- [ ] P2-02 Add repositories and service layer, data consistency/ownership checks and append-only audit events.
-- [ ] P2-03 Implement assessment/workflow/task CRUD APIs and OpenAPI request/response contracts.
-- [ ] P2-04 Implement answers/next-question/missing-information APIs.
-- [ ] P2-05 Implement analyze/scores/risks/recommendations APIs with stale-input handling.
-- [ ] P2-06 Build Streamlit intake + guided discovery + workflow builder + per-task analysis screens.
-- [ ] P2-07 Add final-decision/review endpoints and UI with required override rationale; lock final sign-off to an authorized FDE before multi-user use.
-- [ ] P2-08 Add offline integration test for save → reload → analyze → review → final decision.
+- [x] P2-01 Add SQLAlchemy/Alembic schema and test migrations; SQLite local DB, portable design for PostgreSQL.
+- [x] P2-02 Add repositories and service layer, data consistency/ownership checks and append-only audit events.
+- [x] P2-03 Implement assessment/workflow/task CRUD APIs and OpenAPI request/response contracts.
+- [x] P2-04 Implement answers/next-question/missing-information APIs.
+- [x] P2-05 Implement analyze/scores/risks/recommendations APIs with stale-input handling.
+- [x] P2-06 Build Streamlit intake + guided discovery + workflow builder + per-task analysis screens.
+- [ ] P2-07 Add final-decision/review endpoints and UI with required override rationale; lock final sign-off to an authorized FDE before multi-user use. **Partial (local demo):** review and override endpoints/UI exist and guarded local finalization requires an explicit shared reviewer token (403 otherwise). Reviewer identity is unverified; replace with authenticated organization-scoped FDE roles before multi-user release.
+- [x] P2-08 Add offline integration test for save → reload → analyze → review → final decision.
 
-**Exit:** Complete **rules-only** assessment can be entered, persisted, reviewed and explained end to end.
+**Exit (local demo verified on 2026-10-11):** Rules-only assessment can be created, edited, persisted, reloaded, analyzed per task, reviewed and locally finalized with an explicitly configured reviewer token. 49 offline tests pass, a fresh SQLite Alembic migration and `alembic check` pass, and live `/health` and `/openapi.json` return 200. **Not production complete:** actual authentication and tenant-scoped authorization, Ruff/dependency lock and Streamlit browser smoke remain open. The shared token is a demo-only gate, never rollout authority.
 
 ### Phase 3 — Structured AI assistant (days 15–21)
 - [ ] P3-01 Implement provider adapter, flags/env, timeouts/cost logging, mock provider and no-provider fallback.
@@ -344,7 +344,7 @@ An FDE can, using the app and not manual DB edits:
 
 ## 13. Start-here checklist and sequencing decisions
 
-**First implementation PR (small, reviewable):** repository scaffold + FastAPI health + Streamlit smoke + offline CI + updated README. Then take on Phase 1 deterministic engine before writing any AI prompts or integrating a model.
+**Implementation progress:** Phases 0 (except lock/tooling checks), 1, and local-demo Phase 2 are implemented on `main`. Phase 2 has no hosted runners and is not approved for real/sensitive information. Next: resolve local tool/Streamlit validation and authentication/tenancy gate before any nonlocal deployment; begin Phase 3 AI integration only behind explicit provider-data governance and rules-only fallback.
 
 **Recommended implementation PR order:**
 1. Project scaffold and docs

@@ -1,6 +1,8 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
 from fastapi import FastAPI
+
+from app.api.assessments import router as assessments_router
 from pydantic import BaseModel
 
 from app.domain.schemas import (
@@ -13,12 +15,12 @@ from app.domain.schemas import (
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
 
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 app = FastAPI(
     title="AI Opportunity Advisor API",
     version=APP_VERSION,
-    description="Human-led AI opportunity decision support. Phase 1: stateless deterministic analysis.",
+    description="Local-only human-led assessment persistence and deterministic analysis.",
 )
 
 
@@ -50,3 +52,6 @@ def next_question(payload: DiscoveryRequest) -> DiscoveryResult:
 @app.post("/api/v1/analysis/preview", response_model=AssessmentPreviewResponse, tags=["analysis"])
 def preview_analysis(payload: AssessmentPreviewRequest) -> AssessmentPreviewResponse:
     return analyze(payload)
+
+
+app.include_router(assessments_router)

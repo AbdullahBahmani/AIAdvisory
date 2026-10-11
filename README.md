@@ -1,89 +1,113 @@
 # AI Opportunity Advisor
 
-A human-led decision-support app for discovering business workflows, assessing whether AI is appropriate, comparing AI/non-AI/hybrid approaches, and documenting the Forward Deployed Engineer's (FDE's) reasoning.
+A **human-led, rules-first** decision-support app for discovering workflows, evaluating AI vs. conventional automation, and recording an FDE's recommendation.
 
-> **AI assists. Rules enforce. Data informs. Humans decide.** The application cannot authorize a production rollout or execute business actions.
+> **AI assists. Rules enforce. Data informs. Humans decide.** This project never authorizes production rollout or executes customer/business actions.
 
-## Current status
+## Project status (Phase 2)
 
-**Phase 1: stateless deterministic analysis preview** is implemented. Tasks are evaluated independently with traceable policy IDs, advisory scoring and coverage, data/technical-readiness rubrics, risk classification, permission/approval checks, discovery questions and an evidence-sensitive labor-value model. Tests include three contrasts: AI-support triage, deterministic pricing, and human-approved refunds. No AI provider is called.
+**Implemented:** persistent local assessments, guided discovery answers and provenance, editable workflow steps and atomic tasks, per-task deterministic scores/risks/recommendations, revision-aware stale analysis invalidation, stored FDE review notes, guarded **local-demo-only** finalization and reopen, and an append-only event trail with soft deletion. The FastAPI `/api/v1/analysis/preview` stateless endpoint remains available. No LLM is required.
 
-**Not yet implemented:** persistent assessments, credentials/login, tenancy, FDE sign-off, full workflow editing, production controls and reports. This is a **local demonstration only**, with synthetic/non-sensitive input. Track verified work and open gates in [main-planner.md](main-planner.md).
+**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, external AI provider, data retention and backup policy, formal report export, secure production signoff, multi-user concurrency controls, and cloud deployment. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
 
-## Requirements and installation
+The [implementation planner](main-planner.md) tracks completed checks and remaining gates.
 
-Use Python 3.12+ (3.12 is preferred) with a virtual environment. From the repo root:
+## Run locally — no GitHub runners
+
+Use Python **3.12+**. The repository intentionally contains no GitHub Actions workflow or hosted-runner dependency.
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate                   # Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -e '.[dev]'
-```
 
-Start the API in one terminal:
+# Create/update SQLite schema before serving requests (required)
+python -m alembic upgrade head
 
-```bash
+# Terminal 1
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
 
-Open [the health endpoint](http://127.0.0.1:8000/health) or [interactive API reference](http://127.0.0.1:8000/docs).
-
-Start the optional UI in another terminal:
-
-```bash
+# Terminal 2
 streamlit run ui/streamlit_app.py --server.address 127.0.0.1
 ```
 
-Streamlit defaults to `http://127.0.0.1:8000`; override with `API_BASE_URL`. Nothing is stored on a server in Phase 1. The `.env.example` is documentation only, not automatically loaded. No AI keys are required.
+API: http://127.0.0.1:8000/docs · UI: http://127.0.0.1:8501 · Health: http://127.0.0.1:8000/health
+
+`DATABASE_URL` defaults to `sqlite:///./aiadvisory.sqlite3` (ignored by Git); use an absolute SQLite path if running commands from different directories. The `.env.example` file documents environment variables but is **not automatically loaded**. The Streamlit client uses `API_BASE_URL` (defaults to `http://127.0.0.1:8000`). Use only one developer at a time; the demo doesn't have concurrency/tenant controls.
+
+### Optional local reviewer lock
+
+By default the `final-decision`, `reopen`, and soft-delete operations return **403**. To enable these local-demo actions, set a private environment value **on the API server**:
+
+```bash
+export ADVISORY_REVIEW_TOKEN='replace-with-a-random-secret-at-least-16-characters'
+```
+
+Enter that same secret in the review tab's password field when finalizing or reopening. The server checks the `X-Reviewer-Token` header. The token is **not a login or production authorization model**; a name typed in the review form remains unverified. Finalization never switches off mandatory privacy/approval policy controls. Do not commit this secret.
+
+## Guided workflow
+
+1. Create or resume an assessment and edit problem, owner, and optional numerical baselines.
+2. Answer the next discovery question with an evidence kind, source, and confidence; missing information and contradictions remain visible.
+3. Create one or more workflows, add ordered steps and at least one atomic task per step; save JSON suitability signals, business actions, and optional risks.
+4. Analyze saved workflows. Results use the same deterministic `rules-v1` engine as the Phase 1 preview, including explicit policy hits and missing evidence warnings.
+5. Record a review with rationale and an override reason whenever departing from proposed categories. If the local reviewer token is configured, finalize the **demo assessment**. Finalized assessments are read-only until explicitly reopened.
+
+Any change to intake, answers, workflows, steps, or tasks increments `revision` and invalidates stored analysis. Re-run analysis before recording or finalizing a new review. Earlier reviews and audit history are retained and labeled by revision. Soft-deleted assessments are hidden without destroying audit records.
 
 ## API endpoints
 
-| Method | Route | Behavior |
+| Method | Route | Description |
 | --- | --- | --- |
-| GET | `/health` | Stateless API health (`rules-only`) |
-| GET | `/api/v1/discovery/questions` | Typed question bank including conditional items |
-| POST | `/api/v1/discovery/next-question` | Next unanswered/contradictory question and evidence gaps |
-| POST | `/api/v1/analysis/preview` | Per-task factor scores, risk, policy hits and recommendations |
+| GET | `/health` | Health/mode, no AI provider |
+| GET | `/api/v1/discovery/questions` | Conditional question bank |
+| POST | `/api/v1/discovery/next-question` | Stateless discovery helper |
+| POST | `/api/v1/analysis/preview` | Stateless deterministic scoring (Phase 1 compatibility) |
+| POST / GET | `/api/v1/assessments` | Create / list assessments |
+| GET / PATCH / DELETE | `/api/v1/assessments/{id}` | Read / edit / soft-delete (delete requires token) |
+| POST | `/api/v1/assessments/{id}/answers` | Record sourced, typed answers |
+| GET | `/api/v1/assessments/{id}/next-question` | Next applicable unanswered/contradictory question |
+| GET | `/api/v1/assessments/{id}/missing-information` | Facts and evidence gaps |
+| POST | `/api/v1/assessments/{id}/workflows` | Add a workflow |
+| GET / DELETE | `/api/v1/workflows/{id}` | View / remove workflow |
+| POST | `/api/v1/workflows/{id}/steps` | Add ordered step |
+| PATCH / DELETE | `/api/v1/workflow-steps/{id}` | Update / remove step |
+| POST | `/api/v1/workflow-steps/{id}/tasks` | Add task |
+| PATCH / DELETE | `/api/v1/tasks/{id}` | Edit / remove task |
+| POST | `/api/v1/assessments/{id}/analyze` | Persist analysis snapshot and policy version |
+| GET | `/api/v1/assessments/{id}/scores` | Read fresh scores (409 if stale) |
+| GET | `/api/v1/assessments/{id}/risks` | Read risks and controls |
+| GET | `/api/v1/assessments/{id}/recommendations` | Read recommendations |
+| POST | `/api/v1/assessments/{id}/fde-review` | Record provisional local review |
+| POST | `/api/v1/assessments/{id}/final-decision` | Guarded **local-demo-only** finalization |
+| POST | `/api/v1/assessments/{id}/reopen` | Guarded reopen |
+| GET | `/api/v1/assessments/{id}/audit` | Read local audit events |
 
-Example: POST a workflow preview (the API does **not** persist it):
+See OpenAPI for exact request schemas and validation errors. API requests never call a live AI model or execute financial, customer, or operational actions.
+
+## Local verification
 
 ```bash
-curl -sS http://127.0.0.1:8000/api/v1/analysis/preview \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Pricing","steps":[{"id":"s1","name":"Calculate fee","order":0,"tasks":[{"id":"t1","title":"Apply formula","signals":{"deterministic_rules":true,"exact_math":true,"output_verifiable":true}}]}]}'
-```
-
-Expected recommendation category: `traditional_software`. The response includes rule IDs `DET-001` and `MATH-001`. For a human-approval example see `tests/fixtures/cases.py`.
-
-## Local checks — no GitHub Actions runners
-
-```bash
-python -m pytest
-python -m compileall -q app ui tests
-# Optional if Ruff is installed:
+python -m pytest -q
+python -m compileall -q app ui tests migrations
+python -m alembic check    # after `upgrade head` on your chosen DB
+# Optional if installed locally:
 ruff check .
 ruff format --check .
 ```
 
-**No hosted CI runner is used.** The former `.github/workflows/ci.yml` workflow is intentionally removed. There is no verified transitive dependency lock yet: resolve one in a network-enabled Python 3.12 environment and commit it before claiming fully reproducible installation. Unit/API smoke tests passing locally are not evidence of secure production readiness.
+The test suite uses isolated SQLite database files and offline FastAPI TestClient calls. It covers creation, reload, updates, discovery, task scoring, three golden AI/non-AI/hybrid fixtures, stale-result handling, finalization gates, and soft deletion. The migration was applied and `alembic check` reported no model/schema drift in the implementation environment.
 
-## Architecture and safety
+**Open verification gates:** Python 3.12 lock file not yet committed; Ruff and a live Streamlit browser smoke test not verified in the available environment (Streamlit is not installed there). Python 3.13 local unit/API tests and migration checks passed. Local-only test runs replace hosted CI; **do not enable GitHub Actions runners**.
 
-```text
-Local browser → Streamlit (thin API client) → FastAPI → deterministic rules/services
-                                                    ↓
-                                        explicit model schemas and policy results
+## Design and security
 
-Future: Phase 2 persistence & review | Phase 3 provider behind privacy/authorization gates
-```
-
-- The API holds **no user data** between requests and performs no actions on external systems.
-- Missing inputs remain unknown; financial models are **illustrative only**, not observed ROI.
-- Hard approval/privacy gates take precedence over numeric suitability scores.
-- Advisory results never replace an FDE's final review.
-- No public deployment or confidential data ingestion should occur until authentication, authorization, audit and provider governance are implemented.
-
-Read [blueprint](docs/blueprint.md), [architecture](docs/architecture.md), [threat model](docs/security.md), and [technical ADR](docs/decisions/0001-modular-monolith.md).
+- [Complete project blueprint](docs/blueprint.md)
+- [Architecture and state transitions](docs/architecture.md)
+- [Security and deployment boundaries](docs/security.md)
+- [ADR-0001: Modular monolith](docs/decisions/0001-modular-monolith.md)
+- [ADR-0002: Persistent local MVP](docs/decisions/0002-phase2-persistence.md)
+- [Main implementation planner](main-planner.md)
 
 ## License
 
