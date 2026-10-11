@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 3 structured, opt-in AI advisor committed (69 offline tests; SQLite Alembic upgrade and schema drift check passed). Provider disabled by default, local AI token + explicit data attestation required; no GitHub runner. Remaining: exact provider cost estimates, deterministic AI-question de-duplication, one-click human acceptance UI, live external-provider/Streamlit verification, auth/tenancy, dependency lock and Ruff.
+**Status:** Phase 3 implemented and locally validated (72 offline tests, Alembic upgrades through 0003_ai_cost and no schema drift). Six gated structured AI features, reviewer-approved task acceptance, exact question duplicate suppression, and optional source-backed cost estimates are committed. No GitHub runners. External live provider and Streamlit browser tests, Python 3.12 dependency lock, Ruff, identity/tenancy and real-data privacy certification are outstanding.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -276,16 +276,16 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit (local demo verified on 2026-10-11):** Rules-only assessment can be created, edited, persisted, reloaded, analyzed per task, reviewed and locally finalized with an explicitly configured reviewer token. 49 offline tests pass, a fresh SQLite Alembic migration and `alembic check` pass, and live `/health` and `/openapi.json` return 200. **Not production complete:** actual authentication and tenant-scoped authorization, Ruff/dependency lock and Streamlit browser smoke remain open. The shared token is a demo-only gate, never rollout authority.
 
 ### Phase 3 — Structured AI assistant (days 15–21)
-- [ ] P3-01 Implement provider adapter, flags/env, timeouts/cost logging, mock provider and no-provider fallback. **Partial:** Adapter is opt-in with timeout, one transient retry, mocked tests, token usage and latency provenance. Accurate currency cost tracking is pending verified model-specific prices.
-- [ ] P3-02 Implement versioned discovery prompt + schema, single next-best question, non-repetition and contradiction signals. **Partial:** Versioned JSON schema and highest-value question prompt exist; deterministic generated-question de-duplication and contradiction reconciliation remain pending.
-- [ ] P3-03 Implement editable workflow-decomposition suggestions with human acceptance. **Partial:** Strict per-step editable task suggestions persist for review, but acceptance is currently manual entry via existing workflow editor, not a one-click import/approval flow.
+- [x] P3-01 Implement provider adapter, flags/env, timeouts/cost logging, mock provider and no-provider fallback.
+- [x] P3-02 Implement versioned discovery prompt + schema, single next-best question, non-repetition and contradiction signals.
+- [x] P3-03 Implement editable workflow-decomposition suggestions with human acceptance.
 - [x] P3-04 Implement AI-assisted missing-information/risk suggestions; keep rule classifications and hard controls authoritative.
 - [x] P3-05 Implement architecture pattern comparison, agent-vs-workflow rationale, evaluation/PoC suggestion schema.
 - [x] P3-06 Implement challenge mode: arguments against, weak assumptions, evidence to change decision, simpler option.
 - [x] P3-07 Add provider error handling, retry limits, privacy gating, provenance and adversarial prompt-injection tests.
 - [x] P3-08 Validate that complete end-to-end workflow still works with AI **disabled**.
 
-**Exit (local/offline verified 2026-10-11):** Six typed proposal endpoints and Streamlit advisor tab; model provider explicitly off by default; localhost spend token, per-request data attestation, forbidden-data checks, 30-proposal/assessment cap, revision-based staleness, ID/schema checks, hard-rule veto of unsafe architecture, full rules-only fallback. 69 local automated tests pass, Alembic 0001→0002 and `alembic check` pass. **Not fully complete:** no live provider call was made and no real-data certification, identity/RBAC, validated cost estimator, generated-question de-duplication, or one-click acceptance; UI browser and Ruff checks remain unverified.
+**Exit (local/offline verified 2026-10-11):** All eight Phase 3 implementation task groups are implemented for the **local synthetic-data demo**. Six strict proposal schemas/handlers and Streamlit advisor, default-off provider, per-request consent + 16+ character access token, task-level privacy blocks, 30 successful proposal cap, bounded retries/errors, versioned prompt/schema provenance, revision-based staleness, anti-duplicate exact question checks, contradiction flags, task/step ID validation, policy precedence, optional operator-sourced token-cost estimates, token-guarded explicit human task acceptance and audit event; accepted drafts do not infer any signals/actions and invalidate previous analysis. **72 local automated tests passed**; Alembic 0001→0002→0003 and schema drift check passed. **Remaining verification & production gates:** no live model call or browser-based Streamlit test was performed; semantic paraphrase de-duplication is heuristic/not guaranteed, current provider pricing must be supplied/verified, no authenticated tenancy/DLP/compliance, no resolved Python 3.12 lock/Ruff verification. These limit production readiness but not local Phase 3 implementation.
 
 ### Phase 4 — Reports, evaluation, and demo (days 22–27)
 - [ ] P4-01 Build comprehensive Markdown/HTML assessment report (executive summary, workflow, decomposition, scores, assumptions/evidence, risks, AI/non-AI boundaries, architecture, evaluation, PoC, open questions, final FDE decision).
@@ -344,7 +344,7 @@ An FDE can, using the app and not manual DB edits:
 
 ## 13. Start-here checklist and sequencing decisions
 
-**Implementation progress:** Phases 1 and 2 (local demo) are implemented; Phase 3 has gated, offline-tested AI proposals but is intentionally not production-ready. P0 lock/Ruff, P3 cost/de-duplication/one-click acceptance, and P5 identity, tenant and privacy gates remain open. No hosted runners are used. Next: complete P3 polish or advance to Phase 4 report/evaluation behind synthetic-data restrictions.
+**Implementation progress:** Phases 1–3 are implemented for local synthetic-data use and maintained on `main`; Phase 0 dependency lock/Ruff checks and Phase 5 identity/tenancy/security gates remain open. No hosted runners. Next is Phase 4 reporting, evaluation fixtures and containerized demo; continue forbidding real or sensitive data until production controls are in place.
 
 **Recommended implementation PR order:**
 1. Project scaffold and docs

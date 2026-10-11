@@ -156,3 +156,12 @@ The chat-completions JSON mode is paired with strict Pydantic validation; not ev
 model supports JSON mode, so configure an appropriate model. Provider usage incurs
 external cost, and the adapter retries one transient rate-limit/server error.
 Local test command: `python -m pytest -q`. No GitHub Actions runner is used.
+
+### Optional cost estimates
+
+For demo accounting only, optionally set `ADVISORY_AI_INPUT_USD_PER_MILLION`,
+`ADVISORY_AI_OUTPUT_USD_PER_MILLION` and `ADVISORY_AI_PRICING_SOURCE` to
+operator-verified current values for your chosen model. Then each successful
+proposal records a rough USD estimate from reported input/output token usage.
+Without all three, cost remains **unknown**; no hardcoded provider prices are
+invented. These estimates may omit fees outside token charges, and prices change.

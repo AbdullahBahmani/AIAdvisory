@@ -127,6 +127,15 @@ class AIRunRecord(StrictModel):
     elapsed_ms: int = Field(ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    estimated_cost_usd: str | None = None
+    pricing_source: str | None = None
     created_at: str
     advisory_only: bool = True
     stale: bool = False
+
+
+class AcceptTaskSuggestions(StrictModel):
+    """Explicit local reviewer action. This is never a production identity check."""
+    selected_indices: list[int] = Field(min_length=1, max_length=12)
+    reviewer_label: str = Field(min_length=1, max_length=200)
+    rationale: str = Field(min_length=5, max_length=2000)

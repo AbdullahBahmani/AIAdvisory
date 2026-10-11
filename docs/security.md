@@ -71,3 +71,12 @@ Authentication/authorization, data segregation, secret handling, audit trails, r
   a proxy, and budget/rate-limits and model-provider policy review remain needed.
 - AI-run GET/POST remain **unauthenticated local-demo endpoints**. Never bind
   to a public interface, publish via tunnel, or use real customer data.
+
+
+- Optional token-cost estimates use operator-entered per-million token prices
+  with a source identifier. No unverified price is prefilled, and unknown
+  monetary cost remains unknown. These are estimates, not billing records.
+- Explicit reviewer-token acceptance can import only selected, current-revision
+  workflow task drafts; it invalidates deterministic scores and defaults all
+  imported signals/actions/risks to unknown/empty. Reviewer label remains
+  unverified and is not a production authorization.

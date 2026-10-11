@@ -2,6 +2,9 @@
 
 import json
 import time
+import re
+import os
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -18,6 +21,23 @@ from app.domain.schemas import Answer
 MAX_CONTEXT_BYTES = 12000
 MAX_PROVIDER_TEXT_BYTES = 16000
 
+
+
+def _optional_cost_estimate(input_tokens: int | None, output_tokens: int | None) -> tuple[str | None, str | None]:
+    """Only calculate a rough USD estimate with supplied, sourced pricing rates."""
+    r1 = os.getenv("ADVISORY_AI_INPUT_USD_PER_MILLION")
+    r2 = os.getenv("ADVISORY_AI_OUTPUT_USD_PER_MILLION")
+    source = os.getenv("ADVISORY_AI_PRICING_SOURCE", "")
+    if not (r1 and r2 and source and input_tokens is not None and output_tokens is not None):
+        return None, None
+    try:
+        i, o = Decimal(r1), Decimal(r2)
+    except InvalidOperation:
+        return None, None
+    if not i.is_finite() or not o.is_finite() or min(i, o) < 0 or len(source) > 200:
+        return None, None
+    amount = (Decimal(input_tokens) * i + Decimal(output_tokens) * o) / 1000000
+    return str(amount.quantize(Decimal("0.000001"))), source
 
 def _context(row: AssessmentRow) -> dict:
     # Do not include organization, owner, identities, evidence sources, or reviewer tokens.
@@ -41,6 +61,10 @@ def _context(row: AssessmentRow) -> dict:
         "workflow_steps": steps,
         "answered_question_keys": sorted({a.key for a in row.answers if a.value.get("value") is not None}),
         "unanswered_question_keys": discovery.missing_question_keys,
+        "contradictions": [
+            {"key": finding.key, "kind": finding.kind.value}
+            for finding in discovery.findings if finding.kind.value == "contradiction"
+        ],
         "deterministic_recommendations": [
             {"task_id": x["task_id"], "category": x["recommendation"]["category"],
              "mandatory_controls": x["recommendation"].get("required_controls", []),
@@ -114,6 +138,15 @@ def run_proposal(db: Session, row: AssessmentRow, feature: Feature, payload: AIR
     except (ValidationError, ValueError):
         raise HTTPException(status_code=502, detail="AI response failed strict schema validation") from None
     _check_references(feature, result, context)
+    if feature == Feature.DISCOVERY:
+        normalize = lambda value: re.sub(r"[^a-z0-9]+", "", value.casefold())
+        from app.services.discovery import QUESTIONS
+        recorded_keys = set(context["answered_question_keys"])
+        prior_questions = [run.proposal.get("question", "") for run in row.ai_runs
+                           if run.feature == Feature.DISCOVERY and run.assessment_revision == revision]
+        asked_questions = [q.text for q in QUESTIONS if q.key in recorded_keys]
+        if normalize(result["question"]) in {normalize(x) for x in asked_questions + prior_questions}:
+            raise HTTPException(status_code=502, detail="AI proposed a previously answered or suggested question")
     if feature == Feature.ARCHITECTURE:
         categories = {item["task_id"]: item["category"]
                       for item in context["deterministic_recommendations"]}
@@ -130,11 +163,13 @@ def run_proposal(db: Session, row: AssessmentRow, feature: Feature, payload: AIR
     if row.revision != revision or row.status in ("deleted", "finalized"):
         raise HTTPException(status_code=409, detail="Assessment changed during AI request; discard stale proposal")
     # Store the validated advisory proposal only, not provider prompts, API secrets, or raw output.
+    cost, price_source = _optional_cost_estimate(generated.input_tokens, generated.output_tokens)
     run = AIRunRow(assessment_id=row.id, assessment_revision=revision, feature=feature.value,
                    proposal=result, provider=generated.provider, model=generated.model,
                    prompt_version=PROMPT_VERSION, schema_version=SCHEMA_VERSION,
                    elapsed_ms=elapsed_ms, input_tokens=generated.input_tokens,
-                   output_tokens=generated.output_tokens)
+                   output_tokens=generated.output_tokens,
+                   estimated_cost_usd=cost, pricing_source=price_source)
     db.add(run)
     db.flush()
     db.add(AuditRow(assessment_id=row.id, event_type="ai.proposal_generated",
@@ -151,7 +186,8 @@ def _run_out(run: AIRunRow, current_revision: int) -> AIRunRecord:
         proposal=run.proposal, provider=run.provider, model=run.model,
         prompt_version=run.prompt_version, schema_version=run.schema_version,
         elapsed_ms=run.elapsed_ms, input_tokens=run.input_tokens,
-        output_tokens=run.output_tokens, created_at=run.created_at.isoformat(),
+        output_tokens=run.output_tokens, estimated_cost_usd=run.estimated_cost_usd,
+        pricing_source=run.pricing_source, created_at=run.created_at.isoformat(),
         stale=current_revision != run.assessment_revision,
     )
 

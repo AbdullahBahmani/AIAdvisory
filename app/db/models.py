@@ -132,5 +132,7 @@ class AIRunRow(Base):
     elapsed_ms: Mapped[int] = mapped_column(Integer, nullable=False)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    estimated_cost_usd: Mapped[str | None] = mapped_column(String(60))
+    pricing_source: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="ai_runs")

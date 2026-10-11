@@ -372,6 +372,33 @@ def _ai_advisor(st, base_url: str, assessment: dict):
             st.json(run["proposal"])
             st.caption("Advisory only — manually verify and, if appropriate, enter proposed tasks or "
                        "risks using the normal workflow forms. No automatic acceptance or approvals.")
+            if run["feature"] == "workflow" and not run.get("stale") and assessment["status"] != "finalized":
+                drafts = run["proposal"].get("suggested_tasks", [])
+                with st.form(f"accept-task-proposals-{run['id']}"):
+                    st.caption("Select individual drafts after checking them. Their signals and actions "
+                               "will remain unknown/empty until reviewed in the workflow editor.")
+                    indices = [i for i, draft in enumerate(drafts)
+                               if st.checkbox(f"Accept: {draft['title']} (step {draft['step_id']})", key=f"draft-{run['id']}-{i}")]
+                    reviewer = st.text_input("FDE reviewer label (unverified)", key=f"reviewer-{run['id']}")
+                    rationale = st.text_area("Reason for accepting selected drafts", key=f"why-{run['id']}")
+                    token = st.text_input("Local reviewer token", type="password", key=f"accept-token-{run['id']}")
+                    if st.form_submit_button("Accept selected task drafts"):
+                        try:
+                            if not indices or not token or not rationale.strip() or not reviewer.strip():
+                                raise ValueError("Select drafts and supply reviewer, rationale and reviewer token")
+                            api_request(base_url, "POST", f"/api/v1/assessments/{aid}/ai-runs/{run['id']}/accept-tasks",
+                                        {"selected_indices": indices, "reviewer_label": reviewer, "rationale": rationale},
+                                        reviewer_token=token)
+                        except (HTTPError, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+                            st.error(_api_error(exc))
+                        else:
+                            st.success("Accepted task drafts. Analysis is stale; re-run deterministic analysis.")
+                            st.rerun()
+            if run.get("estimated_cost_usd") is not None:
+                st.caption(f"Estimated provider cost: USD {run['estimated_cost_usd']} "
+                           f"(operator pricing source: {run['pricing_source']})")
+            else:
+                st.caption("Cost unknown: no verified pricing rates configured.")
             st.caption(f"Prompt {run['prompt_version']} · schema {run['schema_version']} "
                        f"· {run['elapsed_ms']} ms · tokens {run.get('input_tokens')}/"
                        f"{run.get('output_tokens')}")

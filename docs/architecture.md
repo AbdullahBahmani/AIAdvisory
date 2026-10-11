@@ -70,3 +70,12 @@ mark past runs **stale** without changing scores or final decisions. Proposed
 tasks/risks are never auto-applied; FDEs must review and manually enter
 accepted suggestions through Phase 2 forms. The new tab is deliberately
 not an agent or autonomous workflow executor.
+
+
+The optional `POST /assessments/{id}/ai-runs/{run_id}/accept-tasks` operation
+requires the local review token, explicit selection and a rationale. It
+imports only task title/description into their known steps, with decision type
+unknown and no asserted policy signals; all analysis is invalidated.
+Proposed question texts are normalized for exact duplicate rejection against
+answered catalog questions and current-revision proposals; semantic similarity
+is NOT guaranteed. Optional cost estimates require external verified pricing.

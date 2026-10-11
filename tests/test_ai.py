@@ -214,3 +214,66 @@ def test_local_spend_guard_rejects_missing_access_token(client):
     override(provider)
     assert client.post(f"/api/v1/assessments/{rid}/ai/discovery", json=APPROVED).status_code == 403
     assert provider.calls == []
+
+
+def test_explicit_human_acceptance_creates_tasks_but_never_infers_signals(client, monkeypatch):
+    rid = create_assessment(client)["id"]
+    _, sid, tid = add_workflow_task(client, rid, signals={"exact_math": True, "deterministic_rules": True})
+    original = client.post(f"/api/v1/assessments/{rid}/analyze").json()
+    proposal = {"suggested_tasks": [
+        {"step_id": sid, "title": "Collect the requested labels", "description": "Proposed data collection", "decision_type": "judgment"},
+        {"step_id": sid, "title": "Review requests", "description": "Human verification workflow"},
+    ]}
+    override(MockProvider(proposal))
+    run = client.post(f"/api/v1/assessments/{rid}/ai/workflow", json=APPROVED, headers=AI_HEADERS).json()
+    target = f"/api/v1/assessments/{rid}/ai-runs/{run['id']}/accept-tasks"
+    body = {"selected_indices": [1], "reviewer_label": "Local FDE", "rationale": "Reviewed the proposed task"}
+    assert client.post(target, json=body).status_code == 403
+    monkeypatch.setenv("ADVISORY_REVIEW_TOKEN", "0123456789abcdefghijkl")
+    header = {"X-Reviewer-Token": "0123456789abcdefghijkl"}
+    assert client.post(target, json={**body, "selected_indices": [99]}, headers=header).status_code == 422
+    resp = client.post(target, json=body, headers=header)
+    assert resp.status_code == 201, resp.text
+    created = resp.json()
+    assert len(created) == 1
+    assert created[0]["title"] == "Review requests"
+    assert created[0]["decision_type"] == "unknown"
+    assert all(v is None for v in created[0]["signals"].values())
+    assert created[0]["actions"] == [] and created[0]["risks"] == []
+    detail = client.get(f"/api/v1/assessments/{rid}").json()
+    assert detail["analysis"] is None and detail["revision"] == run["assessment_revision"] + 1
+    tasks = detail["workflows"][0]["steps"][0]["tasks"]
+    assert len(tasks) == 2 and tasks[0]["id"] == tid
+    assert client.post(target, json=body, headers=header).status_code == 409
+    assert any(event["event_type"] == "ai.task_drafts_accepted"
+               for event in client.get(f"/api/v1/assessments/{rid}/audit").json())
+
+
+def test_discovery_avoids_exact_repeated_question(client):
+    rid = create_assessment(client)["id"]
+    proposal = {"question": "How many cases occur per month?", "why_ask": "Set baseline volume"}
+    override(MockProvider(proposal))
+    assert client.post(f"/api/v1/assessments/{rid}/ai/discovery", json=APPROVED, headers=AI_HEADERS).status_code == 201
+    override(MockProvider(proposal))
+    response = client.post(f"/api/v1/assessments/{rid}/ai/discovery", json=APPROVED, headers=AI_HEADERS)
+    assert response.status_code == 502 and "previously" in response.text
+    assert len(client.get(f"/api/v1/assessments/{rid}/ai-runs").json()) == 1
+
+
+def test_cost_estimation_requires_sourced_model_rates(client, monkeypatch):
+    rid = create_assessment(client)["id"]
+    for key in ("ADVISORY_AI_INPUT_USD_PER_MILLION", "ADVISORY_AI_OUTPUT_USD_PER_MILLION",
+                "ADVISORY_AI_PRICING_SOURCE"):
+        monkeypatch.delenv(key, raising=False)
+    override(MockProvider({"question": "What is the first baseline?", "why_ask": "Need evidence"}))
+    unknown = client.post(f"/api/v1/assessments/{rid}/ai/discovery", json=APPROVED, headers=AI_HEADERS)
+    assert unknown.status_code == 201 and unknown.json()["estimated_cost_usd"] is None
+    monkeypatch.setenv("ADVISORY_AI_INPUT_USD_PER_MILLION", "2")
+    monkeypatch.setenv("ADVISORY_AI_OUTPUT_USD_PER_MILLION", "8")
+    monkeypatch.setenv("ADVISORY_AI_PRICING_SOURCE", "operator-reviewed-rate-sheet")
+    override(MockProvider({"question": "Who approves the next step?", "why_ask": "Need controls"}))
+    priced = client.post(f"/api/v1/assessments/{rid}/ai/discovery", json=APPROVED, headers=AI_HEADERS)
+    assert priced.status_code == 201, priced.text
+    assert priced.json()["estimated_cost_usd"] == "0.000120"
+    assert priced.json()["pricing_source"] == "operator-reviewed-rate-sheet"
+    assert client.get(f"/api/v1/assessments/{rid}/ai-runs").json()[0]["estimated_cost_usd"] == "0.000120"
