@@ -1,87 +1,90 @@
 # AI Opportunity Advisor
 
-A human-led decision-support app to discover business workflows, evaluate whether AI is appropriate, explain safer non-AI/hybrid alternatives, and document a Forward Deployed Engineer's (FDE) decision.
+A human-led decision-support app for discovering business workflows, assessing whether AI is appropriate, comparing AI/non-AI/hybrid approaches, and documenting the Forward Deployed Engineer's (FDE's) reasoning.
 
-> **AI assists. Rules enforce. Data informs. Humans decide.** This project must not autonomously approve production AI rollouts.
+> **AI assists. Rules enforce. Data informs. Humans decide.** The application cannot authorize a production rollout or execute business actions.
 
-## Implementation status
+## Current status
 
-**Phase 0 — foundation only.** FastAPI exposes a public health endpoint, Streamlit displays an API connectivity smoke page, and offline tests and GitHub CI are configured. No assessment workflow, scoring engine, database, AI integration, authentication, or production-ready security controls exist yet. **Use only with non-sensitive demo data.** See [main-planner.md](main-planner.md) for the implementation checklist.
+**Phase 1: stateless deterministic analysis preview** is implemented. Tasks are evaluated independently with traceable policy IDs, advisory scoring and coverage, data/technical-readiness rubrics, risk classification, permission/approval checks, discovery questions and an evidence-sensitive labor-value model. Tests include three contrasts: AI-support triage, deterministic pricing, and human-approved refunds. No AI provider is called.
 
-## Requirements
+**Not yet implemented:** persistent assessments, credentials/login, tenancy, FDE sign-off, full workflow editing, production controls and reports. This is a **local demonstration only**, with synthetic/non-sensitive input. Track verified work and open gates in [main-planner.md](main-planner.md).
 
-- Python 3.12 or newer (3.12 used in CI)
-- pip and a virtual environment
+## Requirements and installation
 
-## Run locally
-
-From the repository root, create a virtual environment and install the project:
-
-**macOS/Linux**
+Use Python 3.12+ (3.12 is preferred) with a virtual environment. From the repo root:
 
 ```bash
-python3.12 -m venv .venv  # or python3 when it is version 3.12+
-source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python3 -m venv .venv
+source .venv/bin/activate                   # Windows: .venv\Scripts\Activate.ps1
+python -m pip install -e '.[dev]'
 ```
 
-**Windows PowerShell**
-
-```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
-```
-
-Run these in separate terminals with the virtual environment activated:
-
-**API**
+Start the API in one terminal:
 
 ```bash
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Check http://127.0.0.1:8000/health and http://127.0.0.1:8000/docs.
+Open [the health endpoint](http://127.0.0.1:8000/health) or [interactive API reference](http://127.0.0.1:8000/docs).
 
-**UI**
+Start the optional UI in another terminal:
 
 ```bash
 streamlit run ui/streamlit_app.py --server.address 127.0.0.1
 ```
 
-Open the local address shown by Streamlit (usually http://127.0.0.1:8501).
+Streamlit defaults to `http://127.0.0.1:8000`; override with `API_BASE_URL`. Nothing is stored on a server in Phase 1. The `.env.example` is documentation only, not automatically loaded. No AI keys are required.
 
-The UI assumes the API is running at http://127.0.0.1:8000. Override with `API_BASE_URL` if needed, e.g. `API_BASE_URL=http://127.0.0.1:9000 streamlit run ui/streamlit_app.py`. An optional `.env.example` documents configuration; the app does **not** automatically load `.env` in Phase 0.
+## API endpoints
 
-## Quality checks
+| Method | Route | Behavior |
+| --- | --- | --- |
+| GET | `/health` | Stateless API health (`rules-only`) |
+| GET | `/api/v1/discovery/questions` | Typed question bank including conditional items |
+| POST | `/api/v1/discovery/next-question` | Next unanswered/contradictory question and evidence gaps |
+| POST | `/api/v1/analysis/preview` | Per-task factor scores, risk, policy hits and recommendations |
+
+Example: POST a workflow preview (the API does **not** persist it):
 
 ```bash
+curl -sS http://127.0.0.1:8000/api/v1/analysis/preview \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Pricing","steps":[{"id":"s1","name":"Calculate fee","order":0,"tasks":[{"id":"t1","title":"Apply formula","signals":{"deterministic_rules":true,"exact_math":true,"output_verifiable":true}}]}]}'
+```
+
+Expected recommendation category: `traditional_software`. The response includes rule IDs `DET-001` and `MATH-001`. For a human-approval example see `tests/fixtures/cases.py`.
+
+## Local checks — no GitHub Actions runners
+
+```bash
+python -m pytest
+python -m compileall -q app ui tests
+# Optional if Ruff is installed:
 ruff check .
 ruff format --check .
-python -m pytest
 ```
 
-GitHub Actions runs these offline smoke tests on pushes to `main` and pull requests. CI installs dependency ranges from `pyproject.toml`; **a fully resolved dependency lock is still pending** (see the Phase 0 checklist for this known gap). Do not interpret a clean unit test run as a production-security approval.
+**No hosted CI runner is used.** The former `.github/workflows/ci.yml` workflow is intentionally removed. There is no verified transitive dependency lock yet: resolve one in a network-enabled Python 3.12 environment and commit it before claiming fully reproducible installation. Unit/API smoke tests passing locally are not evidence of secure production readiness.
 
-## Architecture
+## Architecture and safety
 
 ```text
-Browser → Streamlit UI → FastAPI REST API → [Phase 1: deterministic services]
-                                       → [Phase 2: persistence]
-                                       → [Phase 3: optional guarded AI]
+Local browser → Streamlit (thin API client) → FastAPI → deterministic rules/services
+                                                    ↓
+                                        explicit model schemas and policy results
+
+Future: Phase 2 persistence & review | Phase 3 provider behind privacy/authorization gates
 ```
 
-The UI is an API client and must never connect directly to a database or AI provider. The deterministic engine must work without AI credentials. Refer to [architecture](docs/architecture.md), [security](docs/security.md), and [ADR-0001](docs/decisions/0001-modular-monolith.md).
+- The API holds **no user data** between requests and performs no actions on external systems.
+- Missing inputs remain unknown; financial models are **illustrative only**, not observed ROI.
+- Hard approval/privacy gates take precedence over numeric suitability scores.
+- Advisory results never replace an FDE's final review.
+- No public deployment or confidential data ingestion should occur until authentication, authorization, audit and provider governance are implemented.
 
-## Blueprint and roadmap
-
-- [Original product blueprint](docs/blueprint.md)
-- [Milestones, tasks, exit criteria](main-planner.md)
-
-## Safety and deployment
-
-The system is advisory; human reviewers retain final decisions. Future requirements include permission checks, privacy controls, a full audit log, and explicit approvals for consequential actions. **Do not deploy this scaffold publicly or use it for sensitive assessments.**
+Read [blueprint](docs/blueprint.md), [architecture](docs/architecture.md), [threat model](docs/security.md), and [technical ADR](docs/decisions/0001-modular-monolith.md).
 
 ## License
 
-No open-source license has been selected; all rights remain with the repository owner until one is explicitly added.
+No open-source license is granted unless the repository owner adds one.

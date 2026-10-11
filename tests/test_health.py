@@ -13,7 +13,7 @@ def test_health_is_public_and_rules_only() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "ai-opportunity-advisor-api",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "mode": "rules-only",
     }
 
@@ -21,4 +21,7 @@ def test_health_is_public_and_rules_only() -> None:
 def test_openapi_exposes_health_contract() -> None:
     response = client.get("/openapi.json")
     assert response.status_code == 200
-    assert "/health" in response.json()["paths"]
+    paths = response.json()["paths"]
+    assert "/health" in paths
+    assert "/api/v1/analysis/preview" in paths
+    assert "/api/v1/discovery/next-question" in paths

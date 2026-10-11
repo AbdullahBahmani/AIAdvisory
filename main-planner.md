@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 0 foundation committed to main; local API and tests verified. **Phase 0 exit is blocked** by a missing resolved dependency lock and a failing hosted CI run (GitHub job logs unavailable). Phase 1 not started.
+**Status:** Phase 1 deterministic analysis preview implemented and locally validated (35 offline tests). Hosted GitHub Actions runner use deliberately removed on owner request; dependency lock and Ruff check remain unavailable in this offline environment. Phase 2 persistence/UI wizard not started.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -245,21 +245,21 @@ Each checkbox is a trackable task; update this section as implementation progres
 ### Phase 0 — Repository and technical foundation (days 1–2)
 - [x] P0-01 Copy/normalize the uploaded blueprint into docs/blueprint.md for in-repo reference; preserve attribution to original uploaded document and version.
 - [x] P0-02 Replace placeholder README with scope, architecture, safety principle, local start, development workflow, and feature status.
-- [ ] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control. **Implementation note:** project/packaging, CI lint/test config, .gitignore, and .env.example are present, but a reproducible transitive dependency lock still must be resolved and committed in a network-enabled environment.
-- [x] P0-04 Add FastAPI health endpoint, Streamlit smoke page, CI, and local run commands.
+- [ ] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control. **Partially complete:** packaging/tests, `.gitignore`, `.env.example`, Ruff config committed; resolved transitive lock and Ruff run pending offline dependency availability.
+- [x] P0-04 Add FastAPI health endpoint, Streamlit smoke page and local run/test commands. **Owner-directed change:** remove GitHub-hosted CI workflow; use local tests instead.
 - [x] P0-05 Record architecture ADR (Streamlit/FastAPI/SQLite initially; modular monolith; optional LLM); write a short threat-model draft.
 
-**Exit verification (2026-10-11):** Four local API/UI-adapter smoke tests passed; editable packaging without dependency downloads passed; TOML/YAML parsed; a live Uvicorn server returned HTTP 200 from `/health` and `/openapi.json`. GitHub Actions [CI run #1](https://github.com/AbdullahBahmani/AIAdvisory/actions/runs/38146203397) failed twice (including a rerun); job logs were unavailable, so do not attribute the failure to any specific cause. Full Streamlit boot, Ruff lint/format, hosted CI success, and a resolved `uv.lock` remain unverified/pending. **To close Phase 0:** in a network-enabled Python 3.12 environment, run `python -m pip install uv`, `uv lock`, `uv sync --extra dev`, `uv run ruff check .`, `uv run ruff format --check .`, and `uv run pytest`; start the API and UI for a manual smoke test; commit `uv.lock`; then repair/confirm a green GitHub Actions run.
+**Exit verification (2026-10-11):** Local Python 3.13 unit/API tests, module compilation and live FastAPI smoke were successful. Owner requested **no GitHub Actions runners**, so `.github/workflows/ci.yml` is removed and CI success is explicitly **not a prerequisite in this repository's current workflow**. The original P0-04 hosted-CI deliverable is superseded by documented local `python -m pytest` / compileall checks. A Python 3.12-resolved dependency lock, Ruff run, and full Streamlit runtime smoke remain unverified due to offline tool availability. Finish those checks locally when dependencies are accessible before production use.
 
 ### Phase 1 — Deterministic assessment engine (days 3–7)
-- [ ] P1-01 Define typed schemas/enums for organizations, assessments, workflows, tasks, six categories, questions, answers, evidence, risks, controls, scores, decisions.
-- [ ] P1-02 Build intake question bank and conditional branching logic; required fields and source/confidence model.
-- [ ] P1-03 Implement workflow-step/task decomposition input and validation (manual first).
-- [ ] P1-04 Build missing-information engine: known, unknown, assumption, contradiction, evidence needed.
-- [ ] P1-05 Implement deterministic hard-rule engine with traceable rule IDs and structured results.
-- [ ] P1-06 Implement factor-based scoring, technical/data/value rubrics, ROI calculator and risk × likelihood matrix; preserve unknowns.
-- [ ] P1-07 Implement six-category recommendation engine with pattern choice, alternatives, rationale and approvals.
-- [ ] P1-08 Test all rules and the three contrastive fixture cases without any external AI call.
+- [x] P1-01 Define typed schemas/enums for organizations, assessments, workflows, tasks, six categories, questions, answers, evidence, risks, controls, scores, decisions.
+- [x] P1-02 Build intake question bank and conditional branching logic; required fields and source/confidence model.
+- [x] P1-03 Implement workflow-step/task decomposition input and validation (manual first).
+- [x] P1-04 Build missing-information engine: known, unknown, assumption, contradiction, evidence needed.
+- [x] P1-05 Implement deterministic hard-rule engine with traceable rule IDs and structured results.
+- [x] P1-06 Implement factor-based scoring, technical/data/value rubrics, ROI calculator and risk × likelihood matrix; preserve unknowns.
+- [x] P1-07 Implement six-category recommendation engine with pattern choice, alternatives, rationale and approvals.
+- [x] P1-08 Test all rules and the three contrastive fixture cases without any external AI call.
 
 **Exit:** Pure Python engine gives reproducible per-task verdicts, sensible no-AI decisions, all active controls and missing-evidence warnings.
 

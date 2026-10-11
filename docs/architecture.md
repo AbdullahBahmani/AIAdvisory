@@ -1,39 +1,35 @@
-# Technical architecture — Phase 0
+# Architecture — Phase 1 decision engine
 
-**Decision status:** Adopted for local prototype; re-evaluate before production.
-
-The repository is a modular Python monolith. FastAPI hosts the backend boundary and response schemas; Streamlit is a thin web UI that talks only to the API. The runtime is stateless today and has **no persistence or AI calls**. Phase 1 adds pure deterministic services, Phase 2 adds a persistence layer and API contracts, and Phase 3 adds optional, validated AI suggestions. See [ADR-0001](decisions/0001-modular-monolith.md).
+The application remains an intentionally small modular monolith (see [ADR-0001](decisions/0001-modular-monolith.md)). FastAPI is the only API boundary; Streamlit is an optional stateless HTTP client.
 
 ```text
-Local browser
-    |
-Streamlit (ui/streamlit_app.py)
-    |  GET http://127.0.0.1:8000/health
-FastAPI (app/main.py)
-    |
-  [future deterministic analysis services]
-    |
-  [future SQLAlchemy repository -> SQLite local / PostgreSQL production]
-    |
-  [future optional AI provider, only from API and after privacy checks]
+Local Streamlit UI
+      ↓ POST /api/v1/analysis/preview or /discovery/next-question
+FastAPI validation (Pydantic, extra=forbid)
+      ↓
+Assessment orchestration (pure function)
+      ├── suitability and readiness rubrics
+      ├── deterministic policy hits (approval/privacy/action gates)
+      ├── risk × impact/likelihood matrix
+      ├── evidence-sensitive value calculation (Decimal)
+      └── conservative recommendation with explicit alternatives & evidence gaps
+      ↓
+Per-task result + stable rules-v1 version marker (no writes, no execution)
 ```
 
-## Contracts available today
+## Local API contracts
 
-- `GET /health`: JSON with `status`, `service`, `version`, and `mode` (`rules-only`). No secrets or assessment data.
-- `GET /openapi.json` and `/docs`: generated FastAPI API description.
+- `GET /health` — health, version and `rules-only` mode.
+- `GET /api/v1/discovery/questions` — question bank with conditional metadata.
+- `POST /api/v1/discovery/next-question` — facts/assumptions/contradictions, outstanding questions and next question.
+- `POST /api/v1/analysis/preview` — per-task scoring, policy hits, risks, recommendations, advisory warnings.
 
-## Operational boundaries
+This **is not the Phase 2 persistence API**: there is no account, stored assessment, approval workflow, model inference or report generation yet. API calls with confidential data should not be made to public hosts. Missing values are preserved as `null` and score coverage is shown explicitly; `0` remains a true numeric zero. Outputs are reproducible only for the declared version and supplied inputs.
 
-- `AI_ENABLED=false` is documented for future phases, not connected to an AI runtime; AI is unavailable in Phase 0 regardless of this value.
-- Streamlit's API target defaults to `http://127.0.0.1:8000`. The API and UI are local-development services, not a hardened deployment.
-- The initial health endpoint has no database/readiness probe. Later health checks should distinguish liveness from downstream dependencies.
-- Versioned scores, evidence, rule audit, FDE sign-off and replay are reserved for later milestones, **not existing features**.
+## Security boundary
 
-## Release evolution
+No LLM calls, business tool execution, database writes, or final rollout approval. The health endpoint is unauthenticated by design; the whole API should be bound to localhost and used only with synthetic data. A future deployment must enforce auth, tenancy, provider data consent, limits and audit before receiving real assessments.
 
-1. Create service/domain modules and offline rule tests (Phase 1).
-2. Add transaction handling, migration and API request validation (Phase 2).
-3. Add provider interface, structured output validation and prompt-injection controls (Phase 3).
-4. Add reproducible reports, evaluation and container demos (Phase 4).
-5. Secure identity, tenant isolation, backup and monitoring before real data (Phase 5).
+## Local quality verification
+
+`python -m pytest` and `python -m compileall -q app ui tests`. No GitHub runner is required or configured. A lock file and hosted-runtime UI check are outstanding from Phase 0.
