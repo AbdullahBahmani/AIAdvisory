@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 4 report/export, curated offline evaluation (4/4 fixtures), and three saved-workflow demo exports implemented on top of Phase 3; 59 tests passed against a reconstructed Phase 2 + Phase 4 local workspace. Full merged Phase 3+4 suite, real Docker/UI startup, Ruff and dependency lock remain unverified. No GitHub runners used. Production/security gates remain open.
+**Status:** Phase 5 security-hardening increment committed to main: scoped credentials default-deny `/api/v1`, organizations/role permissions, nested tenant isolation, guarded reviewer identity labels, sanitized request telemetry, SQLite Alembic migration, token CLI and pilot runbook. Local reconstructed Phase 1/2/4 + Phase 5 harness: 65 passing tests, Alembic 0001–0004 and no drift, CLI issue/revoke and three demos pass. This harness used local Phase 3 provider/service stubs; the complete merged Phase 3+4+5 suite, Docker/UI browser, live PostgreSQL, SSO/MFA, DLP/privacy, rate limiting and security audit are **not verified**. Production gate CLOSED; no GitHub runners.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -299,15 +299,15 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit (local demonstration):** Three in-memory persistence/API demo workflows produce Markdown+HTML reports showing AI, traditional software, and human-approved hybrid outcomes. Four offline curated policy fixtures pass. 59 tests on reconstructed Phase 2+new Phase 4 code pass; full merged Phase 3+4 suite, a live Streamlit browser check, Docker boot, and operational/real-data evaluation are **still pending**, so Phase 4 is not production validated.
 
 ### Phase 5 — Production-readiness gate (days 28–30 for assessment; hardening may take longer)
-- [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route.
-- [ ] P5-02 Confirm external-model policy, privacy, residency, deletion, retention, safe logging and model-provider configuration.
-- [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery.
-- [ ] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content.
-- [ ] P5-05 Add security checks for injection, untrusted evidence, prompt injection, secrets, rate limits and dependency vulnerabilities.
-- [ ] P5-06 Publish deployment/runbook, evidence-based limitations, known risks and rollback plan.
-- [ ] P5-07 Release only when explicit gate checklist below passes; otherwise retain local/demo-only designation.
+- [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route. **Partial:** API credentials, RBAC, tenant checks and credential-bound review logs done; independent IdP/SSO/MFA/membership lifecycle pending.
+- [ ] P5-02 Confirm external-model policy, privacy, residency, deletion, retention, safe logging and model-provider configuration. **Partial:** provider permission checks retained and secrets not logged; actual DPIA/DLP, residency, contract, retention and deletion workflows pending.
+- [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery. **Partial:** SQLAlchemy supports PostgreSQL via optional psycopg dependency; SQLite migration/drift tests pass. PostgreSQL instance, backup/restore and load tests unverified.
+- [ ] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content. **Partial:** sanitized JSON route/status/latency/request-ID logging and response headers added. Alerting/metrics dashboards and provider-spend monitoring pending.
+- [ ] P5-05 Add security checks for injection, untrusted evidence, prompt injection, secrets, rate limits and dependency vulnerabilities. **Partial:** cross-tenant, revoked/expired, forged-token, impersonated reviewer, role and report security tests added; distributed rate limiting, pen test and dependency scanner pending.
+- [ ] P5-06 Publish deployment/runbook, evidence-based limitations, known risks and rollback plan. **Partial:** operator runbook and ADR-0005 document credential rotation, containment and rollback/backup plans; no operational drill completed.
+- [ ] P5-07 Release only when explicit gate checklist below passes; otherwise retain local/demo-only designation. **Blocked:** no approved production deployment; see security gate in `docs/operations.md`.
 
-**Exit:** Production use is permitted only if security/privacy/authorization testing passes; a 30-day target is not a reason to skip controls.
+**Exit status:** NOT CLEARED. A server-scoped credential and isolated pilot are not production authentication, privacy compliance or release authorization. Resolve all P5 gates before public or real-data use.
 
 ## 11. MVP definition of done — release gate
 

@@ -80,3 +80,8 @@ Authentication/authorization, data segregation, secret handling, audit trails, r
   workflow task drafts; it invalidates deterministic scores and defaults all
   imported signals/actions/risks to unknown/empty. Reviewer label remains
   unverified and is not a production authorization.
+
+
+## Phase 5 pilot authorization and release gate
+
+Every `/api/v1` route is now denied without a server-provisioned credential, except when `ADVISORY_DEMO_MODE=1` is **explicitly** enabled for a loopback synthetic demo. Random opaque tokens are hashed, revocable, expiring and organization/role-bound. Server-side tenant checks cover assessments, nested workflows, AI history, reviews and reports; old records without an organization ID remain inaccessible in authenticated mode. Reviewer identity labels are credential-bound, not independently verified human identities. Response/log telemetry omits bodies, URLs, credentials and sensitive query strings. **Do not claim this is enterprise identity, SSO/MFA or DLP/privacy compliance.** Production rollout stays blocked pending the gates in `docs/operations.md` and ADR-0005.

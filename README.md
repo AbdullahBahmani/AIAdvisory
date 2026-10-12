@@ -4,11 +4,11 @@ A **human-led, rules-first** decision-support app for discovering workflows, eva
 
 > **AI assists. Rules enforce. Data informs. Humans decide.** This project never authorizes production rollout or executes customer/business actions.
 
-## Project status (Phase 4)
+## Project status (Phase 5 hardening; NOT production-ready)
 
-**Implemented:** persistent local assessments, guided discovery answers and provenance, editable workflow steps and atomic tasks, per-task deterministic scores/risks/recommendations, revision-aware stale analysis invalidation, stored FDE review notes, guarded **local-demo-only** finalization and reopen, and an append-only event trail with soft deletion. The FastAPI `/api/v1/analysis/preview` stateless endpoint remains available. No LLM is required.
+**Implemented:** Phase 1–4 deterministic assessments, optional gated AI suggestions, persistent workflows, reports, synthetic golden evaluations and local demos. Phase 5 adds **default-deny API access**, opaque expiring/revocable organization-scoped credentials, viewer/analyst/reviewer/admin roles, tenant-aware record/report/AI access, API-credential-bound review history and sanitized request telemetry. Old records with no tenant ID remain quarantined.
 
-**Not implemented:** user authentication/SSO, organizational authorization and tenant separation, data retention and backup policy, PDF rendering, secure production signoff, multi-user concurrency controls, and cloud deployment. The optional provider connector is present but OFF by default and restricted to approved synthetic/non-sensitive local data. The locally supplied reviewer name is **not authenticated identity**. Never enter real customer records, personal data, or confidential business information into this demo. **Do not expose the service on a public network.**
+**Release gate CLOSED:** API tokens are an internal pilot access boundary, not enterprise SSO/MFA or proof of human identity. A public deployment still requires IdP membership management, CSRF/session security, distributed rate limits, PostgreSQL migration/load and backup/restore drills, privacy and provider governance, managed secrets/retention, live browser/container checks, full merged tests and external security review. Never enter real customer or regulated data into local demo mode.
 
 The [implementation planner](main-planner.md) tracks completed checks and remaining gates.
 
@@ -187,3 +187,20 @@ docker compose up --build
 ```
 
 **Evidence limitations:** Curated results are policy regression checks, not estimates of real-world AI accuracy or ROI. Streamlit browser and Docker engine smoke tests have not been run in the available environment. The full merged Phase 3+4 suite needs a local run before any release. No external provider calls are part of the demo; no authorization, tenancy, production security review or operational rollback has been delivered.
+
+
+## Phase 5 — organization-scoped API credentials (local pilot, no runners)
+
+Protected `/api/v1` routes now require `Authorization: Bearer aia_...` by default. After `alembic upgrade head`, provision a credential **only on a trusted operator shell**, and store it securely:
+
+```bash
+python -m scripts.admin issue --organization "Example" --subject "fde@example" --role reviewer --days 7
+python -m scripts.admin revoke --token-id <credential-id>
+python -m pytest -q
+python -m compileall -q app ui scripts tests migrations
+python -m alembic check
+```
+
+Roles: viewer (read), analyst (edit/analyze), reviewer (review and local decision), admin (delete/manage). The Streamlit sidebar accepts a credential but is **not** a federated login. Tenant scoping comes from the server-side credential, not any organization name typed into the UI. Legacy assessments without a tenant ID are quarantined.
+
+The synthetic loopback `compose.yaml` **explicitly** sets `ADVISORY_DEMO_MODE=1` to bypass credentials for synthetic demos only. Never enable that flag on a shared host or public network. See [operations](docs/operations.md), [security](docs/security.md), and [ADR-0005](docs/decisions/0005-credential-bound-tenancy.md).

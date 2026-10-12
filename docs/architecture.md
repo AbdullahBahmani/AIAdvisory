@@ -79,3 +79,8 @@ unknown and no asserted policy signals; all analysis is invalidated.
 Proposed question texts are normalized for exact duplicate rejection against
 answered catalog questions and current-revision proposals; semantic similarity
 is NOT guaranteed. Optional cost estimates require external verified pricing.
+
+
+## Phase 5: scoped API-token pilot boundary
+
+A FastAPI authorization dependency resolves an opaque credential in a shared request SQLAlchemy session, attaches principal/role/organization context, checks method permissions, and checks server-owned assessment ancestry for reads/writes of workflow, step, task, review, AI proposal and report resources. Credential subjects are set by a trusted local CLI; client-supplied organization text does not grant tenant access. Legacy assessments with NULL tenant IDs remain quarantined. This API-token boundary is for controlled pilots only, not a production federated login or independently verified human identity. See `docs/operations.md`.
