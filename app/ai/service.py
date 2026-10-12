@@ -15,6 +15,7 @@ from app.ai.provider import AIProvider, ProviderFailure
 from app.ai.schemas import (AIRunRecord, AIRequest, Feature, PROMPT_VERSION, SCHEMA_VERSION,
                             SCHEMAS)
 from app.db.models import AIRunRow, AssessmentRow, AuditRow
+from app.security import current_principal
 from app.services.discovery import summarize_discovery
 from app.domain.schemas import Answer
 
@@ -173,6 +174,7 @@ def run_proposal(db: Session, row: AssessmentRow, feature: Feature, payload: AIR
     db.add(run)
     db.flush()
     db.add(AuditRow(assessment_id=row.id, event_type="ai.proposal_generated",
+                    actor=current_principal(db).subject,
                     details={"run_id": run.id, "feature": feature.value,
                              "revision": revision, "prompt_version": PROMPT_VERSION}))
     db.commit()

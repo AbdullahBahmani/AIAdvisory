@@ -2,11 +2,13 @@
 
 import json
 import os
+from contextvars import ContextVar
 from ui.reporting import render_report_tab
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
+_API_BEARER: ContextVar[str | None] = ContextVar("api_bearer", default=None)
 
 DEMO_PAYLOAD = {
     "title": "Exact pricing calculation (demonstration)",
@@ -50,6 +52,9 @@ def api_request(
     if not path.startswith("/api/v1/"):
         raise ValueError("API path must start with /api/v1/")
     headers = {"Accept": "application/json"}
+    bearer = _API_BEARER.get()
+    if bearer:
+        headers["Authorization"] = "Bearer " + bearer
     if reviewer_token:
         headers["X-Reviewer-Token"] = reviewer_token
     if ai_access_token:
@@ -443,6 +448,8 @@ def main() -> None:
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
     st.warning("Local developer demo only — synthetic, non-sensitive data. No authentication or tenancy.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
+    st.sidebar.text_input("Organization API credential (not a login session)", type="password", key="api_bearer")
+    _API_BEARER.set(st.session_state.get("api_bearer") or None)
     try:
         health = fetch_api_health(base_url)
         st.success(f"API connected · {health['service']} · {health['version']} · {health['mode']}")

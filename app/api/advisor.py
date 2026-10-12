@@ -9,10 +9,11 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIProvider, get_ai_provider
 from app.ai.schemas import AIRunRecord, AIRequest, Feature, AcceptTaskSuggestions
 from app.ai.service import list_proposals, run_proposal
-from app.api.assessments import (get_or_404, require_local_reviewer, change_inputs,
+from app.api.assessments import (get_or_404, change_inputs,
                                  check_mutable, task_out, audit)
 from app.db.models import AIRunRow, AssessmentRow, StepRow, TaskRow
 from app.db.session import get_db
+from app.security import require_reviewer_or_local_demo
 from app.domain.persistence import StoredTask
 
 router = APIRouter(prefix="/api/v1/assessments", tags=["ai-advisory"])
@@ -48,7 +49,7 @@ def accept_task_drafts(
 ):
     # A deliberate, token-guarded action, not automatic model acceptance. The
     # dedicated reviewer token is still local-only and not real user identity.
-    require_local_reviewer(x_reviewer_token)
+    require_reviewer_or_local_demo(db, x_reviewer_token)
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     run = db.get(AIRunRow, run_id)
