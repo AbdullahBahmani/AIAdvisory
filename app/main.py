@@ -1,10 +1,13 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from app.telemetry import instrument_request
+
+from app.security import authenticate_request
 
 from app.api.assessments import router as assessments_router
 from app.api.advisor import router as advisor_router
-from app.api.reports import router as reporting_router
+from app.api.reports import router as reports_router
 from pydantic import BaseModel
 
 from app.domain.schemas import (
@@ -17,12 +20,12 @@ from app.domain.schemas import (
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
 
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 app = FastAPI(
     title="AI Opportunity Advisor API",
     version=APP_VERSION,
-    description="Local demo: human-led assessment, optional AI proposals and revision-bound reports.",
+    description="Tenant-scoped local pilot API; synthetic demo requires explicit opt-in.",
 )
 
 
@@ -41,21 +44,25 @@ def health() -> HealthResponse:
     )
 
 
-@app.get("/api/v1/discovery/questions", response_model=list[Question], tags=["discovery"])
+@app.get("/api/v1/discovery/questions", response_model=list[Question], tags=["discovery"], dependencies=[Depends(authenticate_request)])
 def questions() -> list[Question]:
     return list(QUESTIONS)
 
 
-@app.post("/api/v1/discovery/next-question", response_model=DiscoveryResult, tags=["discovery"])
+@app.post("/api/v1/discovery/next-question", response_model=DiscoveryResult, tags=["discovery"], dependencies=[Depends(authenticate_request)])
 def next_question(payload: DiscoveryRequest) -> DiscoveryResult:
     return summarize_discovery(payload.answers)
 
 
-@app.post("/api/v1/analysis/preview", response_model=AssessmentPreviewResponse, tags=["analysis"])
+@app.post("/api/v1/analysis/preview", response_model=AssessmentPreviewResponse, tags=["analysis"], dependencies=[Depends(authenticate_request)])
 def preview_analysis(payload: AssessmentPreviewRequest) -> AssessmentPreviewResponse:
     return analyze(payload)
 
 
-app.include_router(assessments_router)
-app.include_router(advisor_router)
-app.include_router(reporting_router)
+app.middleware("http")(instrument_request)
+
+
+app.include_router(assessments_router, dependencies=[Depends(authenticate_request)])
+
+app.include_router(advisor_router, dependencies=[Depends(authenticate_request)])
+app.include_router(reports_router, dependencies=[Depends(authenticate_request)])

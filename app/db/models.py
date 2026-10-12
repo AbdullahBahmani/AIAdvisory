@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Boolean
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -23,6 +23,7 @@ class AssessmentRow(Base):
     __tablename__ = "assessments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id", ondelete="RESTRICT"), index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     organization: Mapped[str | None] = mapped_column(String(200))
     owner: Mapped[str | None] = mapped_column(String(200))
@@ -38,8 +39,8 @@ class AssessmentRow(Base):
     workflows: Mapped[list["WorkflowRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="WorkflowRow.created_at")
     answers: Mapped[list["AnswerRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AnswerRow.created_at")
     reviews: Mapped[list["ReviewRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="ReviewRow.created_at")
-    audit_events: Mapped[list["AuditRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AuditRow.created_at")
     ai_runs: Mapped[list["AIRunRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AIRunRow.created_at")
+    audit_events: Mapped[list["AuditRow"]] = relationship(cascade="all, delete-orphan", back_populates="assessment", order_by="AuditRow.created_at")
 
 
 class WorkflowRow(Base):
@@ -103,6 +104,7 @@ class ReviewRow(Base):
     rationale: Mapped[str] = mapped_column(Text)
     override_reason: Mapped[str | None] = mapped_column(Text)
     is_final: Mapped[bool] = mapped_column(default=False)
+    identity_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="reviews")
 
@@ -116,6 +118,25 @@ class AuditRow(Base):
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
+
+
+class OrganizationRow(Base):
+    __tablename__ = "organizations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class ApiCredentialRow(Base):
+    __tablename__ = "api_credentials"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class AIRunRow(Base):

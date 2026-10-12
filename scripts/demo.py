@@ -6,6 +6,7 @@ and Markdown/HTML exports for each synthetic case. It never signs off a rollout.
 """
 
 import argparse
+import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -42,6 +43,8 @@ def run_demo(output: Path) -> dict[str, str]:
             yield session
 
     app.dependency_overrides[get_db] = override_db
+    previous_demo_mode = os.environ.get("ADVISORY_DEMO_MODE")
+    os.environ["ADVISORY_DEMO_MODE"] = "1"  # isolated, synthetic in-process demonstration
     results = {}
     try:
         with TestClient(app) as client:
@@ -80,6 +83,10 @@ def run_demo(output: Path) -> dict[str, str]:
                     (output / f"{name}.{suffix}").write_text(report.text, encoding="utf-8")
                 results[name] = category
     finally:
+        if previous_demo_mode is None:
+            os.environ.pop("ADVISORY_DEMO_MODE", None)
+        else:
+            os.environ["ADVISORY_DEMO_MODE"] = previous_demo_mode
         app.dependency_overrides.clear()
         engine.dispose()
     return results

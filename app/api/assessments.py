@@ -12,6 +12,7 @@ from app.db.models import (
     AnswerRow, AssessmentRow, AuditRow, ReviewRow, StepRow, TaskRow, WorkflowRow,
 )
 from app.db.session import get_db
+from app.security import current_principal, require_role, require_reviewer_or_local_demo
 from app.domain.persistence import (
     AssessmentCreate, AssessmentDetail, AssessmentPatch, AssessmentSummary, AuditEntry,
     ReviewRequest, StepCreate, StepPatch, StoredAnswer, StoredReview, StoredStep,
@@ -30,6 +31,24 @@ def get_or_404(db: Session, model, identifier: str):
     row = db.get(model, identifier)
     if row is None or (model is AssessmentRow and row.status == "deleted"):
         raise HTTPException(status_code=404, detail="Resource not found")
+    principal = current_principal(db)
+    if not principal.demo:
+        if isinstance(row, AssessmentRow):
+            parent = row
+        elif isinstance(row, WorkflowRow):
+            parent = row.assessment
+        elif isinstance(row, StepRow):
+            parent = row.workflow.assessment
+        elif isinstance(row, TaskRow):
+            parent = row.step.workflow.assessment
+        elif isinstance(row, AnswerRow):
+            parent = row.assessment
+        elif isinstance(row, ReviewRow):
+            parent = row.assessment
+        else:
+            raise HTTPException(status_code=404, detail="Resource not found")
+        if parent.organization_id is None or parent.organization_id != principal.organization_id or parent.status == "deleted":
+            raise HTTPException(status_code=404, detail="Resource not found")
     return row
 
 
@@ -41,7 +60,10 @@ def check_mutable(row: AssessmentRow) -> None:
 
 
 def audit(db: Session, row: AssessmentRow, event: str, *, actor: str = "local_demo", **details) -> None:
-    db.add(AuditRow(assessment_id=row.id, event_type=event, actor=actor, details=details))
+    principal = current_principal(db)
+    # Never trust a submitted reviewer label as the authenticated audit actor.
+    db.add(AuditRow(assessment_id=row.id, event_type=event,
+                    actor=actor if principal.demo else principal.subject, details=details))
 
 
 def change_inputs(row: AssessmentRow) -> None:
@@ -101,7 +123,8 @@ def detail(row: AssessmentRow) -> AssessmentDetail:
         reviews=[StoredReview(id=r.id, reviewer_id=r.reviewer_id,
                               selected_category=r.selected_category, rationale=r.rationale,
                               override_reason=r.override_reason, analysis_revision=r.analysis_revision,
-                              is_final=r.is_final, created_at=r.created_at) for r in row.reviews],
+                              is_final=r.is_final, created_at=r.created_at,
+                              identity_unverified=not r.identity_verified) for r in row.reviews],
         created_at=row.created_at, updated_at=row.updated_at,
     )
 
@@ -122,7 +145,11 @@ def validate_review_category(row: AssessmentRow, category: str, override_reason:
         raise HTTPException(status_code=422, detail="Explain any override from analysis recommendations")
 
 
-def require_local_reviewer(token: str | None):
+def require_local_reviewer(token: str | None, db: Session | None = None):
+    if db is not None:
+        return require_reviewer_or_local_demo(db, token)
+    if os.getenv("ADVISORY_DEMO_MODE") != "1":
+        raise HTTPException(status_code=403, detail="Reviewer credential required")
     configured = os.getenv("ADVISORY_REVIEW_TOKEN", "")
     if len(configured) < 16 or token is None or not secrets.compare_digest(token, configured):
         raise HTTPException(status_code=403, detail="Explicit local reviewer token required; production identity is not supported")
@@ -130,7 +157,8 @@ def require_local_reviewer(token: str | None):
 
 @router.post("/assessments", response_model=AssessmentDetail, status_code=201)
 def create_assessment(payload: AssessmentCreate, db: Session = Depends(get_db)):
-    row = AssessmentRow(**payload.model_dump(mode="json"))
+    principal = current_principal(db)
+    row = AssessmentRow(**payload.model_dump(mode="json"), organization_id=principal.organization_id)
     if row.minimum_net_value_per_period is not None:
         row.minimum_net_value_per_period = str(row.minimum_net_value_per_period)
     db.add(row)
@@ -142,7 +170,11 @@ def create_assessment(payload: AssessmentCreate, db: Session = Depends(get_db)):
 
 @router.get("/assessments", response_model=list[AssessmentSummary])
 def list_assessments(db: Session = Depends(get_db), limit: int = Query(default=50, ge=1, le=200)):
-    rows = db.scalars(select(AssessmentRow).where(AssessmentRow.status != "deleted").order_by(AssessmentRow.created_at.desc()).limit(limit)).all()
+    principal = current_principal(db)
+    scope = [AssessmentRow.status != "deleted"]
+    if not principal.demo:
+        scope.append(AssessmentRow.organization_id == principal.organization_id)
+    rows = db.scalars(select(AssessmentRow).where(*scope).order_by(AssessmentRow.created_at.desc()).limit(limit)).all()
     return [summary(row) for row in rows]
 
 
@@ -165,7 +197,10 @@ def update_assessment(assessment_id: str, payload: AssessmentPatch, db: Session 
 
 @router.delete("/assessments/{assessment_id}", status_code=204)
 def delete_assessment(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
-    require_local_reviewer(x_reviewer_token)
+    if current_principal(db).demo:
+        require_reviewer_or_local_demo(db, x_reviewer_token)
+    else:
+        require_role(db, "admin")
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     row.status = "deleted"
@@ -358,28 +393,37 @@ def recommendations(assessment_id: str, db: Session = Depends(get_db)):
 
 @router.post("/assessments/{assessment_id}/fde-review", response_model=StoredReview, status_code=201)
 def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depends(get_db)):
+    if not current_principal(db).demo:
+        require_role(db, "reviewer")
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     validate_review_category(row, payload.selected_category.value, payload.override_reason)
-    review = ReviewRow(assessment_id=row.id, analysis_revision=row.revision, **payload.model_dump(mode="json"))
+    principal = current_principal(db)
+    if not principal.demo and payload.reviewer_id != principal.subject:
+        raise HTTPException(status_code=403, detail="Reviewer label must match credential subject")
+    review = ReviewRow(assessment_id=row.id, analysis_revision=row.revision,
+                       identity_verified=not principal.demo, **payload.model_dump(mode="json"))
     db.add(review)
     db.flush()
     row.status = "in_review"
     audit(db, row, "fde.review_recorded", actor=payload.reviewer_id, review_id=review.id, identity_unverified=True)
     db.commit()
     return StoredReview.model_validate({"id": review.id, **payload.model_dump(), "analysis_revision": review.analysis_revision,
-                                        "is_final": False, "created_at": review.created_at})
+                                        "is_final": False, "created_at": review.created_at,
+                                        "identity_unverified": principal.demo})
 
 
 @router.post("/assessments/{assessment_id}/final-decision", response_model=StoredReview)
 def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
-    require_local_reviewer(x_reviewer_token)
+    principal = require_reviewer_or_local_demo(db, x_reviewer_token)
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     require_analysis(row)
     review = next((r for r in reversed(row.reviews) if r.analysis_revision == row.revision and not r.is_final), None)
     if review is None:
         raise HTTPException(status_code=409, detail="Record an FDE review first")
+    if not principal.demo and principal.role != "admin" and review.reviewer_id != principal.subject:
+        raise HTTPException(status_code=403, detail="Only the reviewing FDE or organization admin can finalize")
     review.is_final = True
     row.status = "finalized"
     audit(db, row, "fde.local_demo_finalized", actor=review.reviewer_id, review_id=review.id, identity_unverified=True)
@@ -387,12 +431,13 @@ def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(def
     return StoredReview(id=review.id, reviewer_id=review.reviewer_id,
                         selected_category=review.selected_category, rationale=review.rationale,
                         override_reason=review.override_reason, analysis_revision=review.analysis_revision,
-                        is_final=True, created_at=review.created_at)
+                        is_final=True, created_at=review.created_at,
+                        identity_unverified=not review.identity_verified)
 
 
 @router.post("/assessments/{assessment_id}/reopen", response_model=AssessmentDetail)
 def reopen_assessment(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
-    require_local_reviewer(x_reviewer_token)
+    require_reviewer_or_local_demo(db, x_reviewer_token)
     row = get_or_404(db, AssessmentRow, assessment_id)
     if row.status != "finalized":
         raise HTTPException(status_code=409, detail="Only finalized assessments need reopening")

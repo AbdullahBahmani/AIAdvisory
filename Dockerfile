@@ -10,8 +10,10 @@ WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY app/ ./app/
 COPY ui/ ./ui/
+COPY scripts/ ./scripts/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
+# No automatic provisioned admin token or provider secret is baked into the image.
 RUN python -m pip install --no-cache-dir .
 
 EXPOSE 8000

@@ -5,6 +5,7 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/aiadvisory.sqlite3
       ADVISORY_AI_ENABLED: "0"
+      ADVISORY_DEMO_MODE: "1"   # EXPLICIT synthetic-data-only demo switch; never deploy as production
     volumes:
       - app-data:/data
     ports:

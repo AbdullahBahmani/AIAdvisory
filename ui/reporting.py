@@ -4,13 +4,16 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
-def fetch_report(base_url: str, assessment_id: str, format: str = "markdown", timeout: float = 12.0) -> bytes:
+def fetch_report(base_url: str, assessment_id: str, format: str = "markdown", timeout: float = 12.0, *, bearer_token: str | None = None) -> bytes:
     if format not in ("markdown", "html"):
         raise ValueError("Report format must be markdown or html")
     if not assessment_id or any(c in assessment_id for c in "?#/\\"):
         raise ValueError("Invalid assessment identifier")
     path = f"/api/v1/assessments/{quote(assessment_id, safe='')}/report?format={format}"
-    request = Request(f"{base_url.rstrip('/')}{path}", headers={"Accept": "text/plain" if format == "markdown" else "text/html"})
+    headers = {"Accept": "text/plain" if format == "markdown" else "text/html"}
+    if bearer_token:
+        headers["Authorization"] = "Bearer " + bearer_token
+    request = Request(f"{base_url.rstrip('/')}{path}", headers=headers)
     with urlopen(request, timeout=timeout) as response:  # noqa: S310 - configured local API
         if response.status != 200:
             raise ValueError(f"Report endpoint returned {response.status}")
@@ -28,8 +31,9 @@ def render_report_tab(st, base_url: str, assessment: dict) -> None:
         return
     assessment_id = assessment["id"]
     try:
-        markdown = fetch_report(base_url, assessment_id, "markdown")
-        html = fetch_report(base_url, assessment_id, "html")
+        token = st.session_state.get("api_bearer") or None
+        markdown = fetch_report(base_url, assessment_id, "markdown", bearer_token=token)
+        html = fetch_report(base_url, assessment_id, "html", bearer_token=token)
     except (OSError, ValueError) as exc:
         st.error(f"Report retrieval failed: {exc}")
         return
