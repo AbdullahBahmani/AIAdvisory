@@ -85,3 +85,10 @@ Authentication/authorization, data segregation, secret handling, audit trails, r
 ## Phase 5 pilot authorization and release gate
 
 Every `/api/v1` route is now denied without a server-provisioned credential, except when `ADVISORY_DEMO_MODE=1` is **explicitly** enabled for a loopback synthetic demo. Random opaque tokens are hashed, revocable, expiring and organization/role-bound. Server-side tenant checks cover assessments, nested workflows, AI history, reviews and reports; old records without an organization ID remain inaccessible in authenticated mode. Reviewer identity labels are credential-bound, not independently verified human identities. Response/log telemetry omits bodies, URLs, credentials and sensitive query strings. **Do not claim this is enterprise identity, SSO/MFA or DLP/privacy compliance.** Production rollout stays blocked pending the gates in `docs/operations.md` and ADR-0005.
+
+
+## Additional optional OIDC gate and persistent throttling (2026-10-13)
+
+OIDC access tokens are validated with pinned HTTPS issuer, audience, JWKS and algorithm RS256, mandatory exp/iat/iss/aud/sub claims and bounded JWK cache/timeouts. Authorization is **not** derived from JWT role, group or organization claims: an operator-approved `oidc_memberships` row maps an external subject to an organization and role. Multi-org users must explicitly select an existing membership. `ADVISORY_OIDC_REQUIRED=1` rejects older local API credentials. There is no hosted IdP, MFA, browser OAuth session or consent system supplied by this repository.
+
+After authentication, API requests use SQL atomic per-subject/organization minute buckets; use a separate ingress limiter for unauthenticated traffic and protection against distributed attacks. SQLite is for local use; PostgreSQL is required for cross-replica storage. Request counts are prunable by operator command. The SQLite backup and retention CLI require explicit output paths, tenants and cutoffs; retention deletes related audit entries, so obtain policy/legal-hold approval first. `ADVISORY_DEPLOYMENT_MODE=production` refuses startup while external release gates remain unverified.

@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 _API_BEARER: ContextVar[str | None] = ContextVar("api_bearer", default=None)
+_API_ORGANIZATION: ContextVar[str | None] = ContextVar("api_org", default=None)
 
 DEMO_PAYLOAD = {
     "title": "Exact pricing calculation (demonstration)",
@@ -55,6 +56,9 @@ def api_request(
     bearer = _API_BEARER.get()
     if bearer:
         headers["Authorization"] = "Bearer " + bearer
+    tenant = _API_ORGANIZATION.get()
+    if tenant:
+        headers["X-Organization-ID"] = tenant
     if reviewer_token:
         headers["X-Reviewer-Token"] = reviewer_token
     if ai_access_token:
@@ -450,6 +454,8 @@ def main() -> None:
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
     st.sidebar.text_input("Organization API credential (not a login session)", type="password", key="api_bearer")
     _API_BEARER.set(st.session_state.get("api_bearer") or None)
+    st.sidebar.text_input("Organization ID (only when OIDC has multiple memberships)", key="api_org")
+    _API_ORGANIZATION.set(st.session_state.get("api_org") or None)
     try:
         health = fetch_api_health(base_url)
         st.success(f"API connected · {health['service']} · {health['version']} · {health['mode']}")

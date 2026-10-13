@@ -42,3 +42,13 @@
 - [ ] Secret lifecycle and key rotation, dependency/audit scanner, penetration test
 - [ ] Full merged Phase 3+4+5 test suite, browser and container runtime smoke, Ruff/lint, dependency lock
 - [ ] Approved rollback and incident response owners
+
+
+## OIDC operation and release checks (2026-10-13)
+
+1. Provision an HTTPS IdP with RS256 signing, short-lived access tokens, MFA and proper issuer/audience configuration. Set `ADVISORY_OIDC_REQUIRED=1`, `ADVISORY_DEPLOYMENT_MODE=pilot`, and `ADVISORY_OIDC_ISSUER`, `ADVISORY_OIDC_AUDIENCE`, `ADVISORY_OIDC_JWKS_URL` on the API host. Configure TLS/WAF before any external users. The JWKS URL must be HTTPS and on the pinned issuer's hostname.
+2. On a trusted shell run `python -m alembic upgrade head`; `python -m scripts.admin create-org --organization 'Example'`; then `python -m scripts.admin grant-oidc --organization 'Example' --issuer 'https://login.example.com' --subject 'subject-from-IdP' --role reviewer`. Use `disable-oidc --membership-id ...` to deactivate. No tenant roles come from claims or user-submitted organization names.
+3. The authenticated limiter defaults to 120 requests/minute per org/subject/role. Set `ADVISORY_REQUESTS_PER_MINUTE` for piloting, monitor 429 and response `Retry-After`, schedule `python -m scripts.admin prune-ratelimits`. Deploy a separately enforced edge/IP limit before internet exposure.
+4. SQLite: `python -m scripts.maintenance backup-sqlite --output /protected/backup.sqlite3`; verify permissions and run a restore rehearsal on a separate instance. On PostgreSQL use encrypted `pg_dump` and `pg_restore`, managed backups and least-privilege roles. Live PostgreSQL was **not available for verification** in this implementation session.
+5. Deletion: `python -m scripts.maintenance purge-soft-deleted --organization-id <uuid> --before 2026-09-01T00:00:00+00:00` only previews. Add `--execute` after confirming tenant, legal hold, separate tested backup and retention approval. The hard purge also destroys per-assessment audit events; update legal records as required.
+6. A real production launch requires independent security and operational sign-off; `ADVISORY_DEPLOYMENT_MODE=production` intentionally refuses boot. Never use local/demo mode to bypass a blocked gate. See `docs/release-verification.md`.

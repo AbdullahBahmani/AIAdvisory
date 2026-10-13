@@ -4,7 +4,7 @@ A **human-led, rules-first** decision-support app for discovering workflows, eva
 
 > **AI assists. Rules enforce. Data informs. Humans decide.** This project never authorizes production rollout or executes customer/business actions.
 
-## Project status (Phase 5 hardening; NOT production-ready)
+## Project status (Phase 5 extended hardening; production release NOT approved)
 
 **Implemented:** Phase 1–4 deterministic assessments, optional gated AI suggestions, persistent workflows, reports, synthetic golden evaluations and local demos. Phase 5 adds **default-deny API access**, opaque expiring/revocable organization-scoped credentials, viewer/analyst/reviewer/admin roles, tenant-aware record/report/AI access, API-credential-bound review history and sanitized request telemetry. Old records with no tenant ID remain quarantined.
 
@@ -204,3 +204,32 @@ python -m alembic check
 Roles: viewer (read), analyst (edit/analyze), reviewer (review and local decision), admin (delete/manage). The Streamlit sidebar accepts a credential but is **not** a federated login. Tenant scoping comes from the server-side credential, not any organization name typed into the UI. Legacy assessments without a tenant ID are quarantined.
 
 The synthetic loopback `compose.yaml` **explicitly** sets `ADVISORY_DEMO_MODE=1` to bypass credentials for synthetic demos only. Never enable that flag on a shared host or public network. See [operations](docs/operations.md), [security](docs/security.md), and [ADR-0005](docs/decisions/0005-credential-bound-tenancy.md).
+
+
+## Completion hardening — identity, rate limits and retention (2026-10-13)
+
+The API now accepts **RS256-signed OIDC access tokens** only when the operator pins HTTPS issuer, audience and same-host JWKS URL. JWT roles and tenant claims are ignored: an operator must provision an active `oidc_memberships` row, and users with multiple memberships must specify `X-Organization-ID` (the selected ID is checked against those memberships). Use `ADVISORY_OIDC_REQUIRED=1` to disable local opaque API-token authentication in a pilot. No identity-provider account, SSO/MFA or interactive OIDC login UI was provisioned or verified here.
+
+```bash
+python -m alembic upgrade head
+python -m scripts.admin create-org --organization "Pilot Example"
+python -m scripts.admin grant-oidc --organization "Pilot Example" --issuer https://login.example.com --subject "idp-user-sub" --role reviewer
+# Use a short-lived, signed, issuer/audience-matched OIDC access token from your configured IdP.
+export ADVISORY_DEPLOYMENT_MODE=pilot
+export ADVISORY_OIDC_REQUIRED=1
+export ADVISORY_OIDC_ISSUER=https://login.example.com
+export ADVISORY_OIDC_AUDIENCE=aiadvisory-api
+export ADVISORY_OIDC_JWKS_URL=https://login.example.com/.well-known/jwks.json
+uvicorn app.main:app --host 127.0.0.1
+```
+
+Authenticated requests are now rate limited in **SQLite/PostgreSQL atomic minute buckets** per organization and subject. Ingress rate limiting is still required to protect against unauthenticated floods. Local maintenance commands support consistent SQLite online backups and organization-scoped, soft-deleted record purging (dry-run unless `--execute`), with retention/legal-hold review required before irreversible purging:
+
+```bash
+python -m scripts.maintenance backup-sqlite --output ./secure-backup.sqlite3
+python -m scripts.maintenance purge-soft-deleted --organization-id <org-uuid> --before 2026-09-01T00:00:00+00:00
+# Only after approvals and a tested backup: append --execute
+python -m scripts.admin prune-ratelimits
+```
+
+`ADVISORY_DEPLOYMENT_MODE=production` deliberately **refuses to boot** until independent security/operations release sign-off is completed. Do not bypass this by labeling a real deployment `local` or `pilot`. See [release verification](docs/release-verification.md), [operations](docs/operations.md), and [ADR-0006](docs/decisions/0006-oidc-ratelimit-and-release-guard.md). No hosted GitHub runners are enabled.
