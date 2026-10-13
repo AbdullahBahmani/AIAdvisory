@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Boolean
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Boolean, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -157,3 +157,22 @@ class AIRunRow(Base):
     pricing_source: Mapped[str | None] = mapped_column(String(200))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="ai_runs")
+
+
+class OidcMembershipRow(Base):
+    """Trusted operator-provisioned identity-to-organization mapping."""
+    __tablename__ = "oidc_memberships"
+    __table_args__ = (UniqueConstraint("issuer", "subject", "organization_id", name="uq_oidc_member_identity_org"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    issuer: Mapped[str] = mapped_column(String(400), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class RequestLimitRow(Base):
+    __tablename__ = "request_limits"
+    identity_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    minute_bucket: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requests: Mapped[int] = mapped_column(Integer, nullable=False)

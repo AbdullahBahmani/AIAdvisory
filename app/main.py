@@ -1,6 +1,7 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
 from fastapi import Depends, FastAPI
+from app.deployment import check_deployment_configuration
 from app.telemetry import instrument_request
 
 from app.security import authenticate_request
@@ -20,7 +21,9 @@ from app.domain.schemas import (
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
+
+check_deployment_configuration()
 
 app = FastAPI(
     title="AI Opportunity Advisor API",

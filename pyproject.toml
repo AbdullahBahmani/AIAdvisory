@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ai-opportunity-advisor"
-version = "0.5.0"
+version = "0.6.0"
 description = "Human-led AI opportunity assessment and advisory platform"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -16,6 +16,7 @@ dependencies = [
   "streamlit>=1.40,<2",
   "sqlalchemy>=2.0,<3",
   "alembic>=1.13,<2",
+  "PyJWT[crypto]>=2.10,<3",
 ]
 
 [project.optional-dependencies]
