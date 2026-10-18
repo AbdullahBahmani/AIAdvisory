@@ -31,16 +31,14 @@ router = APIRouter(prefix="/api/v1", tags=["workspace"])
 
 
 def _active_member(db: Session, subject: str, org: str) -> bool:
-    memberships = db.scalars(select(OidcMembershipRow).where(
+    conditions = [
         OidcMembershipRow.organization_id == org,
         OidcMembershipRow.subject == subject,
         OidcMembershipRow.active.is_(True),
-        OidcMembershipRow.issuer == os.getenv("ADVISORY_OIDC_ISSUER"),
-    )).all() if os.getenv("ADVISORY_OIDC_REQUIRED") == "1" else db.scalars(select(OidcMembershipRow).where(
-        OidcMembershipRow.organization_id == org,
-        OidcMembershipRow.subject == subject,
-        OidcMembershipRow.active.is_(True),
-    )).all()
+    ]
+    if os.getenv("ADVISORY_OIDC_REQUIRED") == "1":
+        conditions.append(OidcMembershipRow.issuer == os.getenv("ADVISORY_OIDC_ISSUER", ""))
+    memberships = db.scalars(select(OidcMembershipRow).where(*conditions)).all()
     if any(ROLE_LEVEL.get(m.role, 0) >= ROLE_LEVEL["reviewer"] for m in memberships):
         return True
     if os.getenv("ADVISORY_OIDC_REQUIRED") == "1":
@@ -80,10 +78,13 @@ def list_members(db: Session = Depends(get_db)):
     if p.demo:
         return []
     members = {}
-    for item in db.scalars(select(OidcMembershipRow).where(
+    member_conditions = [
         OidcMembershipRow.organization_id == p.organization_id,
         OidcMembershipRow.active.is_(True),
-    )):
+    ]
+    if os.getenv("ADVISORY_OIDC_REQUIRED") == "1":
+        member_conditions.append(OidcMembershipRow.issuer == os.getenv("ADVISORY_OIDC_ISSUER", ""))
+    for item in db.scalars(select(OidcMembershipRow).where(*member_conditions)):
         members[("oidc", item.subject)] = MemberView(subject=item.subject, role=item.role, provider="oidc")
     if os.getenv("ADVISORY_OIDC_REQUIRED") != "1":
         now = datetime.now(timezone.utc)
