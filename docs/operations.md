@@ -52,3 +52,29 @@
 4. SQLite: `python -m scripts.maintenance backup-sqlite --output /protected/backup.sqlite3`; verify permissions and run a restore rehearsal on a separate instance. On PostgreSQL use encrypted `pg_dump` and `pg_restore`, managed backups and least-privilege roles. Live PostgreSQL was **not available for verification** in this implementation session.
 5. Deletion: `python -m scripts.maintenance purge-soft-deleted --organization-id <uuid> --before 2026-09-01T00:00:00+00:00` only previews. Add `--execute` after confirming tenant, legal hold, separate tested backup and retention approval. The hard purge also destroys per-assessment audit events; update legal records as required.
 6. A real production launch requires independent security and operational sign-off; `ADVISORY_DEPLOYMENT_MODE=production` intentionally refuses boot. Never use local/demo mode to bypass a blocked gate. See `docs/release-verification.md`.
+
+
+## Phase 6 pilot operator requirements (2026-10-18)
+
+A `pilot` API no longer boots with demo auth, SQLite, opaque local API-token
+access, or a PostgreSQL URL lacking `sslmode=verify-full`. Configure a real,
+properly authorized OIDC IdP with pinned issuer/audience/JWKS, PostgreSQL over
+certificate-verified TLS and a trusted edge ingress. These checks do not imply
+that the identity-provider UI, MFA, browser CSRF/session lifecycle, data governance
+or external edge controls have been independently validated.
+
+After `alembic upgrade head`, `GET /ready` must report `{"status":"ready"}`
+only if DB connectivity and migration `0006_concurrency` are present. `/health`
+remains a liveness probe. The local Docker Compose healthcheck uses `/ready`
+after it applies migrations, but Compose deliberately enables insecure
+synthetic-only local demo authentication and must not be promoted to production.
+
+Use the current `revision` or `ETag` from `GET /api/v1/assessments/{id}`
+as `If-Match: "<revision>"` on pilot assessment changes. Retry only after
+reloading on HTTP 409, 412 or 428. The server's independent database row
+version rejects concurrent changes to the same assessment.
+
+If upstream ingress cannot enforce TLS, WAF, IP/body-size limits, credential
+rotation and alerting, **do not** expose this pilot to internet clients.
+`ADVISORY_DEPLOYMENT_MODE=production` still refuses startup until a named
+release owner signs off independent security/operations/privacy evidence.

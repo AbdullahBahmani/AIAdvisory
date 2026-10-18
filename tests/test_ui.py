@@ -81,3 +81,17 @@ def test_ai_ui_adapter_requires_attestation_and_does_not_write_edits():
     assert json.loads(req.data) == {"send_to_provider": True, "approved_non_sensitive_data": True}
     assert req.get_header("X-ai-access-token") == "local-secret"
     assert out["advisory_only"]
+
+
+def test_api_client_sends_current_assessment_revision_on_write():
+    from ui.streamlit_app import api_request, _ASSESSMENT_REVISION
+    current = _ASSESSMENT_REVISION.set(8)
+    try:
+        response = FakeResponse(json.dumps({"revision": 9}).encode())
+        with patch("ui.streamlit_app.urlopen", return_value=response) as mocked:
+            api_request("http://127.0.0.1:8000", "PATCH",
+                        "/api/v1/assessments/assessment-id", {"title": "New title"})
+        request = mocked.call_args.args[0]
+        assert request.get_header("If-match") == '"8"'
+    finally:
+        _ASSESSMENT_REVISION.reset(current)
