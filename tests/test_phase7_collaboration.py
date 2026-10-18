@@ -143,3 +143,18 @@ def test_only_assigned_reviewer_can_record_review(secure_client):
     assert client.post(endpoint, json={**body, "reviewer_id": "other"}, headers=other).status_code == 403
     accepted = client.post(endpoint, json={**body, "reviewer_id": "primary"}, headers=primary)
     assert accepted.status_code == 201, accepted.text
+
+
+def test_new_workspace_routes_are_authenticated_and_tenant_scoped(secure_client):
+    client, provision, _ = secure_client
+    admin, _, _ = provision("Protected", "admin", "admin")
+    outside, _, _ = provision("Other", "outside", "admin")
+    aid = _assessment(client, admin)
+    for url in ("/api/v1/workspace/inbox", "/api/v1/workspace/summary",
+                f"/api/v1/assessments/{aid}/approvals",
+                f"/api/v1/assessments/{aid}/comments"):
+        assert client.get(url).status_code == 401, url
+    assert client.get(f"/api/v1/assessments/{aid}/approvals", headers=outside).status_code == 404
+    assert client.post(f"/api/v1/assessments/{aid}/approvals",
+        json={"stage": "technical", "decision": "approved", "rationale": "Attempt to cross tenant"},
+        headers=outside).status_code == 404
