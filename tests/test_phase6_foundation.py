@@ -122,7 +122,7 @@ def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
             assert client.get("/ready").status_code == 503
             with engine.begin() as connection:
                 connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-                connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0007_collaboration')"))
+                connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0008_portfolio')"))
             assert client.get("/ready").json() == {"status": "ready"}
     finally:
         app.dependency_overrides.clear()

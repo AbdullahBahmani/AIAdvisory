@@ -16,6 +16,7 @@ from app.api.assessments import router as assessments_router
 from app.api.advisor import router as advisor_router
 from app.api.reports import router as reports_router
 from app.api.workspace import router as workspace_router
+from app.api.portfolio import router as portfolio_router
 from pydantic import BaseModel
 
 from app.domain.schemas import (
@@ -28,7 +29,7 @@ from app.domain.schemas import (
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
 
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 check_deployment_configuration()
 
@@ -50,7 +51,7 @@ def readiness(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM organizations LIMIT 1")).all()
         current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if current != "0007_collaboration":
+        if current != "0008_portfolio":
             raise HTTPException(status_code=503, detail="Database migration not current")
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database not ready") from None
@@ -96,3 +97,5 @@ app.include_router(advisor_router, dependencies=[Depends(authenticate_request)])
 app.include_router(reports_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(workspace_router, dependencies=[Depends(authenticate_request)])
+
+app.include_router(portfolio_router, dependencies=[Depends(authenticate_request)])

@@ -223,3 +223,60 @@ class InboxNotificationRow(Base):
     message: Mapped[str] = mapped_column(String(300), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OpportunityProfileRow(Base):
+    __tablename__ = "opportunity_profiles"
+    __table_args__ = (UniqueConstraint("assessment_id", name="uq_opportunity_profile_assessment"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
+    strategic_alignment: Mapped[int | None] = mapped_column(Integer)
+    urgency: Mapped[int | None] = mapped_column(Integer)
+    delivery_effort: Mapped[int | None] = mapped_column(Integer)
+    updated_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class OpportunityEvidenceRow(Base):
+    __tablename__ = "opportunity_evidence"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    source_reference: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    verified_by: Mapped[str | None] = mapped_column(String(200))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ValueScenarioRow(Base):
+    __tablename__ = "value_scenarios"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class PocPlanRow(Base):
+    __tablename__ = "poc_plans"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    inputs: Mapped[dict] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="planned")
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class PocObservationRow(Base):
+    __tablename__ = "poc_observations"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    poc_id: Mapped[str] = mapped_column(ForeignKey("poc_plans.id", ondelete="CASCADE"), nullable=False, index=True)
+    actual: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_reference: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
