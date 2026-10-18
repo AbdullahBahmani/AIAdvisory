@@ -1,0 +1,73 @@
+{
+  "dataset_version": "portfolio-synthetic-v1",
+  "description": "Synthetic regression fixtures only; NOT calibrated against real-world judgments or measured ROI.",
+  "priorities": [
+    {
+      "id": "ready",
+      "alignment": 4,
+      "urgency": 5,
+      "effort": 2,
+      "verified_sources": 1,
+      "analysis_fresh": true,
+      "policy_gated": false,
+      "expected_score": 87,
+      "status": "provisional"
+    },
+    {
+      "id": "unknown-evidence",
+      "alignment": 5,
+      "urgency": 5,
+      "effort": 1,
+      "verified_sources": 0,
+      "analysis_fresh": true,
+      "policy_gated": false,
+      "expected_score": null,
+      "status": "unranked"
+    },
+    {
+      "id": "privacy-gated",
+      "alignment": 5,
+      "urgency": 5,
+      "effort": 1,
+      "verified_sources": 2,
+      "analysis_fresh": true,
+      "policy_gated": true,
+      "expected_score": null,
+      "status": "unranked"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "positive",
+      "name": "Synthetic positive",
+      "currency": "NOK",
+      "period": "month",
+      "cases_per_period": "100",
+      "baseline_minutes": "30",
+      "target_minutes": "10",
+      "hourly_cost": "600",
+      "recurring_cost": "5000",
+      "initial_cost": "15000",
+      "assumption_source": "Synthetic hand-authored numbers",
+      "expected_gross": "20000",
+      "expected_net": "15000",
+      "expected_payback": "1"
+    },
+    {
+      "id": "negative",
+      "name": "Synthetic negative",
+      "currency": "NOK",
+      "period": "month",
+      "cases_per_period": "100",
+      "baseline_minutes": "30",
+      "target_minutes": "40",
+      "hourly_cost": "600",
+      "recurring_cost": "2000",
+      "initial_cost": "15000",
+      "assumption_source": "Synthetic hand-authored numbers",
+      "expected_gross": "-10000",
+      "expected_net": "-12000",
+      "expected_payback": null
+    }
+  ]
+}
