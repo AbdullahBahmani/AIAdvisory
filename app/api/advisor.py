@@ -13,7 +13,7 @@ from app.api.assessments import (get_or_404, change_inputs,
                                  check_mutable, task_out, audit)
 from app.db.models import AIRunRow, AssessmentRow, StepRow, TaskRow
 from app.db.session import get_db
-from app.security import require_reviewer_or_local_demo
+from app.security import require_reviewer_or_local_demo, current_principal
 from app.domain.persistence import StoredTask
 
 router = APIRouter(prefix="/api/v1/assessments", tags=["ai-advisory"])
@@ -78,8 +78,9 @@ def accept_task_drafts(
         db.add(task)
         db.flush()
         created.append(task_out(task))
-    audit(db, row, "ai.task_drafts_accepted", actor=payload.reviewer_label,
+    principal = current_principal(db)
+    audit(db, row, "ai.task_drafts_accepted", actor=payload.reviewer_label if principal.demo else principal.subject,
           source_run_id=run.id, selected_indices=selected, rationale=payload.rationale,
-          identity_unverified=True)
+          identity_unverified=principal.demo)
     db.commit()
     return created
