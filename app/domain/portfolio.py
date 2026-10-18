@@ -5,7 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 EvidenceKind = Literal["baseline", "technical", "business", "risk", "other"]
 Period = Literal["month", "quarter", "year"]
@@ -93,6 +93,15 @@ class PocPlanIn(BaseModel):
         if not value.strip():
             raise ValueError("Metric fields cannot be blank")
         return value.strip()
+
+
+    @model_validator(mode="after")
+    def target_direction_is_meaningful(self):
+        if self.direction == "higher" and self.target < self.baseline:
+            raise ValueError("Higher-is-better target must not be below baseline")
+        if self.direction == "lower" and self.target > self.baseline:
+            raise ValueError("Lower-is-better target must not exceed baseline")
+        return self
 
 
 class PocObservationIn(BaseModel):

@@ -201,3 +201,25 @@ def test_portfolio_rolls_up_only_current_poc_outcomes(secure_client):
     assert client.patch(root, headers=admin, json={"title": "Change"}).status_code == 200
     entries = client.get("/api/v1/portfolio/opportunities", headers=admin).json()["items"]
     assert entries[0]["poc_outcomes"]["measured"] == 0
+
+
+def test_poc_goals_must_agree_with_improvement_direction():
+    from pydantic import ValidationError
+    from app.domain.portfolio import PocPlanIn
+    import pytest
+
+    base = {
+        "kpi_name": "Case duration", "unit": "minutes", "direction": "lower",
+        "baseline": "10", "target": "3",
+        "success_criteria": "Validate time savings on a synthetic test set",
+    }
+    assert PocPlanIn.model_validate(base).target == Decimal("3")
+    with pytest.raises(ValidationError):
+        PocPlanIn.model_validate({**base, "target": "12"})
+    with pytest.raises(ValidationError):
+        PocPlanIn.model_validate({**base, "direction": "higher"})
+
+
+def test_synthetic_portfolio_fixture_runner():
+    from app.portfolio_evaluation import run
+    assert run() == 0

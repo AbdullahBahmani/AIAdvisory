@@ -91,3 +91,5 @@ Additional Phase 8 validation requires representative expert-reviewed
 opportunity outcomes, quantified override errors, ground-truth KPI sampling,
 economic sensitivity, privacy-cleared evidence ingestion and risk calibration.
 Synthetic results cannot establish field accuracy or ROI.
+
+PoC targets must be directionally consistent with the submitted baseline.
