@@ -479,6 +479,9 @@ def main() -> None:
         _ASSESSMENT_REVISION.set(None)
         from ui.collaboration import render_workspace
         from ui.portfolio import render_portfolio_dashboard, render_assessment_portfolio
+        pending_view = st.session_state.pop("next_view", None)
+        if pending_view in {"Assessments", "Workspace", "Portfolio"}:
+            st.session_state["primary_view"] = pending_view
         view = st.sidebar.radio("Navigation", ["Assessments", "Workspace", "Portfolio"], key="primary_view")
         if view == "Workspace":
             render_workspace(st, base_url)

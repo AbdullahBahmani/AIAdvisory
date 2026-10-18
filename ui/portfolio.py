@@ -61,7 +61,7 @@ def render_portfolio_dashboard(st, base: str) -> None:
                           format_func=lambda k: by_id[k]["title"])
     if st.button("Open assessment", key="phase8_portfolio_open"):
         st.session_state["assessment_id"] = chosen
-        st.session_state["primary_view"] = "Assessments"
+        st.session_state["next_view"] = "Assessments"
         st.rerun()
 
 
