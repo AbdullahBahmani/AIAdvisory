@@ -395,3 +395,35 @@ The application code is consolidated on the repository's `main` branch; no PR or
 **No GitHub-hosted runners are used.** Do not relax `ADVISORY_DEPLOYMENT_MODE=production`
 for convenience; missing real-world controls cannot be implemented or
 independently attested to by a source-code commit.
+
+
+## Phase 7 — enterprise product experience (2026-10-18)
+
+**Merged-source implementation (not a claim of verified production readiness):**
+- [x] P7-01 Add organization status dashboard, assessment search and status filter,
+  workspace navigation and revision/ownership-aware inbox UI.
+- [x] P7-02 Introduce backend-validated assigned reviewers from active same-org
+  memberships; no self-registered roles or cross-tenant lookups.
+- [x] P7-03 Add append-only, author-attributed discussion comments stamped with
+  the assessment revision.
+- [x] P7-04 Add three ordered approval stages with distinct authenticated actors,
+  role gates, audit evidence, and automatic invalidation when inputs change.
+- [x] P7-05 Require complete approval chain before protected pilot final signoff;
+  preserve existing human FDE and hard-rule controls.
+- [x] P7-06 Add in-app notifications, private recipient inbox, read receipts
+  and regression test cases for tenant boundaries and approvals.
+- [x] P7-07 Add Alembic migration 0007, API/UI documentation and ADR-0007.
+
+**Remaining / outside this source-only increment:**
+- [ ] P7-08 Execute complete integrated tests, migration/lint and actual browser
+  E2E against an operator-controlled OIDC/PostgreSQL environment.
+- [ ] P7-09 Verified real IdP session lifecycle, SCIM, fine-grained security team
+  role/approval policies and safe user-facing enterprise login.
+- [ ] P7-10 Accessibility and localization evaluation, richer collaboration
+  UX, secure evidence attachments, external notification delivery and PDF/Excel.
+- [ ] P7-11 Legal and operational release signoff (Phase 6 gate still OPEN).
+
+**Status:** Phase 7 experience APIs and UI source are implemented; independent
+validation and production launch are NOT complete. No GitHub-hosted runners
+are used or enabled. Proceed to Phase 8 portfolio intelligence only after
+addressing high-risk verification gaps for any real customer data.

@@ -75,3 +75,18 @@ and a named independent approver. **These checks have NOT been executed or
 certified just because source files were committed. The production startup guard
 remains CLOSED.** Do not put personal, customer or regulated data into this
 prototype until the appropriate review gates are actually satisfied.
+
+
+## Phase 7 source verification requirements (2026-10-18)
+
+Migration `0007_collaboration` and the workspace routes introduce additional
+tenant-scoped data. Run the full merged codebase tests, check SQLite/PostgreSQL
+schema drift, validate authorization on every new route including inbox reads,
+reviewer assignment and approval finalization, and test concurrent approval
+submissions in a live PostgreSQL cluster. These have not been independently
+run or signed off merely by writing test files.
+
+The use of the words "security review" on a business workflow stage does not
+certify cybersecurity compliance. Security personnel still need verified IdP
+roles, reviewed policy, independent testing and their own acceptance evidence.
+The enterprise release gate remains CLOSED.

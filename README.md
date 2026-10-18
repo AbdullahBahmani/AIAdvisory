@@ -257,3 +257,21 @@ privacy sign-off, live PostgreSQL restore drill, penetration test, or supervised
 production release. `ADVISORY_DEPLOYMENT_MODE=production` intentionally
 continues to refuse startup. See `docs/release-verification.md` for the
 remaining gates; run checks locally without GitHub Actions runners.
+
+
+## Phase 7 — Enterprise collaboration and organization workspace
+
+Version 0.7.0 adds organization status dashboards, filtered assessment discovery,
+trusted-member reviewer assignment, revision-bound team comments and a personal
+notification inbox. Technical, security and business review votes require
+separate authenticated people, with a business administrator for the last stage.
+Pilot FDE finalization requires these approvals on the current analyzed revision;
+a changed input makes previous approvals stale. No vote authorizes real-world
+actions, removes privacy safeguards or permits an autonomous model to sign off.
+
+Run migration `0007_collaboration` via `alembic upgrade head` before starting
+this version. See [Phase 7 guide](docs/phase7.md) and
+[ADR-0007](docs/decisions/0007-collaboration.md). Only a limited Streamlit
+experience is provided; enterprise browser SSO, SCIM, fine-grained approval
+policies, complete accessibility testing and external notification channels
+remain future work. Production release stays blocked.

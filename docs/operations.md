@@ -78,3 +78,22 @@ If upstream ingress cannot enforce TLS, WAF, IP/body-size limits, credential
 rotation and alerting, **do not** expose this pilot to internet clients.
 `ADVISORY_DEPLOYMENT_MODE=production` still refuses startup until a named
 release owner signs off independent security/operations/privacy evidence.
+
+
+## Phase 7 collaboration operations
+
+After `alembic upgrade head`, the database schema includes reviewer
+assignments, revision-bound comments, append-only human approval votes and
+recipient-scoped in-app notifications. `/ready` now expects migration
+`0007_collaboration`. Do not use old DB schemas with v0.7.0.
+
+Admin assignment requires an active reviewer/admin in the same tenant and,
+when OIDC-only is enabled, the configured issuer. No self-service membership
+granting is offered. The in-app inbox is not an external email/push delivery
+guarantee. Backup and erasure policies must explicitly cover the new tables;
+hard deletion of an assessment cascades to these records subject to DB FK
+enforcement and approved retention procedures.
+
+A protected pilot FDE final decision requires three current-revision human
+approvals; operational rollback/runbook and verified SSO/MFA still remain
+required before production. No source code change replaces external review.
