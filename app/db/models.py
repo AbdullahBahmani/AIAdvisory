@@ -30,6 +30,8 @@ class AssessmentRow(Base):
     business_problem: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="draft")
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    write_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": write_version}
     value_inputs: Mapped[dict | None] = mapped_column(JSON)
     minimum_net_value_per_period: Mapped[str | None] = mapped_column(String(50))
     analysis_snapshot: Mapped[dict | None] = mapped_column(JSON)

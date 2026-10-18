@@ -80,6 +80,7 @@ def authenticate_request(request: Request, db: Session = Depends(get_db)) -> Pri
                 raise HTTPException(status_code=403, detail="Invalid membership role")
             principal = Principal(subject=sub, organization_id=organization, role=role)
         enforce_limit(db, org=principal.organization_id, principal=principal.subject, role=principal.role)
+    db.info["if_match"] = request.headers.get("if-match")
     db.info["principal"] = principal
     request.state.principal = principal
     required = "viewer" if request.method in {"GET", "HEAD", "OPTIONS"} else "analyst"

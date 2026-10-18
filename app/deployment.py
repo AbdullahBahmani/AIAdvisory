@@ -1,5 +1,6 @@
-"""Start-up guard to prevent accidental exposure of unreviewed local/demo mode."""
+"""Fail-closed startup validation; production requires independent release approval."""
 import os
+from sqlalchemy.engine import make_url
 
 
 def check_deployment_configuration() -> None:
@@ -9,9 +10,15 @@ def check_deployment_configuration() -> None:
     if mode != "local" and os.getenv("ADVISORY_DEMO_MODE") == "1":
         raise RuntimeError("Demo authentication bypass forbidden outside local mode")
     if mode == "production":
-        # Infrastructure operations, independent security review and verified
-        # governance cannot be certified by environment variables alone.
+        # An environment flag is not evidence of IdP, GDPR, pen test or recovery sign-off.
         raise RuntimeError("Production deployment blocked pending independent release review")
-    if mode == "pilot" and os.getenv("ADVISORY_OIDC_REQUIRED") == "1":
+    if mode == "pilot":
+        if os.getenv("ADVISORY_OIDC_REQUIRED") != "1":
+            raise RuntimeError("Pilot requires OIDC-only authentication")
+        database = make_url(os.getenv("DATABASE_URL", "sqlite:///./aiadvisory.sqlite3"))
+        if database.get_backend_name() != "postgresql":
+            raise RuntimeError("Pilot requires PostgreSQL; SQLite is for local demos only")
+        if database.query.get("sslmode") != "verify-full":
+            raise RuntimeError("Pilot PostgreSQL connection requires sslmode=verify-full")
         from app.identity import _config
         _config()

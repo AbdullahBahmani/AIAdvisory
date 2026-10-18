@@ -1,6 +1,12 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from sqlalchemy.orm.exc import StaleDataError
+from app.db.session import get_db
 from app.deployment import check_deployment_configuration
 from app.telemetry import instrument_request
 
@@ -30,6 +36,24 @@ app = FastAPI(
     version=APP_VERSION,
     description="Tenant-scoped local pilot API; synthetic demo requires explicit opt-in.",
 )
+
+
+@app.exception_handler(StaleDataError)
+async def stale_write_conflict(_request, _exc):
+    return JSONResponse(status_code=409, content={"detail": "Assessment changed concurrently; reload and retry"})
+
+
+@app.get("/ready", include_in_schema=False, tags=["health"])
+def readiness(db: Session = Depends(get_db)):
+    """Database/schema readiness only, not enterprise release approval."""
+    try:
+        db.execute(text("SELECT 1 FROM organizations LIMIT 1")).all()
+        current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
+        if current != "0006_concurrency":
+            raise HTTPException(status_code=503, detail="Database migration not current")
+    except SQLAlchemyError:
+        raise HTTPException(status_code=503, detail="Database not ready") from None
+    return {"status": "ready"}
 
 
 class HealthResponse(BaseModel):

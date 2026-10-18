@@ -4,7 +4,7 @@ import os
 import secrets
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.db.models import (
     AnswerRow, AssessmentRow, AuditRow, ReviewRow, StepRow, TaskRow, WorkflowRow,
 )
 from app.db.session import get_db
+from app.concurrency import assert_current_revision
 from app.security import current_principal, require_role, require_reviewer_or_local_demo
 from app.domain.persistence import (
     AssessmentCreate, AssessmentDetail, AssessmentPatch, AssessmentSummary, AuditEntry,
@@ -53,6 +54,7 @@ def get_or_404(db: Session, model, identifier: str):
 
 
 def check_mutable(row: AssessmentRow) -> None:
+    assert_current_revision(row)
     if row.status == "finalized":
         raise HTTPException(status_code=409, detail="Finalized assessment must be explicitly reopened")
     if row.status == "deleted":
@@ -179,8 +181,10 @@ def list_assessments(db: Session = Depends(get_db), limit: int = Query(default=5
 
 
 @router.get("/assessments/{assessment_id}", response_model=AssessmentDetail)
-def get_assessment(assessment_id: str, db: Session = Depends(get_db)):
-    return detail(get_or_404(db, AssessmentRow, assessment_id))
+def get_assessment(assessment_id: str, response: Response, db: Session = Depends(get_db)):
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    response.headers["ETag"] = f'"{row.revision}"'
+    return detail(row)
 
 
 @router.patch("/assessments/{assessment_id}", response_model=AssessmentDetail)
@@ -406,7 +410,7 @@ def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depe
     db.add(review)
     db.flush()
     row.status = "in_review"
-    audit(db, row, "fde.review_recorded", actor=payload.reviewer_id, review_id=review.id, identity_unverified=True)
+    audit(db, row, "fde.review_recorded", actor=payload.reviewer_id, review_id=review.id, identity_unverified=principal.demo)
     db.commit()
     return StoredReview.model_validate({"id": review.id, **payload.model_dump(), "analysis_revision": review.analysis_revision,
                                         "is_final": False, "created_at": review.created_at,
@@ -426,7 +430,7 @@ def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(def
         raise HTTPException(status_code=403, detail="Only the reviewing FDE or organization admin can finalize")
     review.is_final = True
     row.status = "finalized"
-    audit(db, row, "fde.local_demo_finalized", actor=review.reviewer_id, review_id=review.id, identity_unverified=True)
+    audit(db, row, "fde.finalized", actor=review.reviewer_id, review_id=review.id, identity_unverified=principal.demo)
     db.commit()
     return StoredReview(id=review.id, reviewer_id=review.reviewer_id,
                         selected_category=review.selected_category, rationale=review.rationale,
