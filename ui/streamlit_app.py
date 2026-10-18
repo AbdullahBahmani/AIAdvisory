@@ -468,8 +468,10 @@ def main() -> None:
         if assessment:
             _ASSESSMENT_REVISION.set(assessment["revision"])
             st.caption(f"Status: {assessment['status']} · Revision: {assessment['revision']} · ID: {assessment['id']}")
-            intake, discovery, workflow, analysis, advisor, review, report = st.tabs([
+            from ui.collaboration import render_collaboration, render_workspace
+            intake, discovery, workflow, analysis, advisor, review, report, collaboration, workspace = st.tabs([
                 "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review", "7 · Reports",
+                "8 · Collaboration", "9 · Workspace",
             ])
             with intake:
                 _intake(st, base_url, assessment)
@@ -485,6 +487,10 @@ def main() -> None:
                 _review(st, base_url, assessment)
             with report:
                 render_report_tab(st, base_url, assessment)
+            with collaboration:
+                render_collaboration(st, base_url, assessment)
+            with workspace:
+                render_workspace(st, base_url)
         with st.expander("Stateless rules-only preview (legacy Phase 1)"):
             raw = st.text_area("Preview JSON", value=json.dumps(DEMO_PAYLOAD, indent=2), height=220)
             if st.button("Run preview"):
