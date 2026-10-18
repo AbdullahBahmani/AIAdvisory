@@ -16,16 +16,15 @@ from app.api.assessments import audit, get_or_404
 from app.concurrency import assert_current_revision
 from app.db.models import (
     ApiCredentialRow, ApprovalRow, AssessmentCommentRow, AssessmentRow,
-    InboxNotificationRow, OidcMembershipRow, ReviewerAssignmentRow,
+    InboxNotificationRow, OidcMembershipRow, ReviewerAssignmentRow, utcnow,
 )
 from app.db.session import get_db
 from app.domain.collaboration import (
     ApprovalCreate, ApprovalSummary, ApprovalView, AssignmentCreate, AssignmentView,
     CommentCreate, CommentView, MemberView, NotificationView, WorkspaceSummary,
 )
-from app.security import current_principal, require_role, ROLE_LEVEL
+from app.security import ROLE_LEVEL, current_principal, require_role
 from app.services.approval_chain import STAGES, current_chain
-from app.db.models import utcnow
 
 router = APIRouter(prefix="/api/v1", tags=["workspace"])
 
@@ -151,6 +150,7 @@ def add_comment(assessment_id: str, payload: CommentCreate, db: Session = Depend
     item = AssessmentCommentRow(assessment_id=row.id, assessment_revision=row.revision,
                                 author=p.subject, body=payload.body.strip())
     db.add(item)
+    db.flush()  # resolve identifier before it is written to the audit event
     assigned = _assignment(db, row.id)
     if assigned and assigned.reviewer_subject != p.subject:
         _notice(db, row, assigned.reviewer_subject, "comment.added", "A comment was added to an assigned assessment")
@@ -197,6 +197,7 @@ def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Dep
                        stage=payload.stage, decision=payload.decision,
                        actor=p.subject, rationale=payload.rationale.strip())
     db.add(vote)
+    db.flush()  # preserve concrete vote ID in append-only audit history
     row.updated_at = utcnow()  # row-version bump serializes parallel votes
     assigned = _assignment(db, row.id)
     if assigned and assigned.reviewer_subject != p.subject:
