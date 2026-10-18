@@ -427,3 +427,39 @@ independently attested to by a source-code commit.
 validation and production launch are NOT complete. No GitHub-hosted runners
 are used or enabled. Proceed to Phase 8 portfolio intelligence only after
 addressing high-risk verification gaps for any real customer data.
+
+
+## Phase 8 — AI Opportunity Portfolio Intelligence (2026-10-18)
+
+**Code implementation merged to `main` (verification separately required):**
+- [x] P8-01 Build tenant-scoped cross-assessment portfolio with assessment
+  status, current evidence coverage, explicit unranked cases and a versioned
+  weights-based planning priority heuristic (`portfolio-v1`).
+- [x] P8-02 Create a revision-bound evidence registry with source references,
+  provenance, independent reviewer attestation and stale-record handling.
+- [x] P8-03 Implement exact Decimal-based, immutable labor-value scenarios:
+  gross/net/payback, entered currency, period and source of assumptions;
+  never convert mixed currencies or claim observed ROI.
+- [x] P8-04 Implement human-controlled PoC plans and source-linked KPI
+  observations; prevent activity against stale revisions, preserve past results.
+- [x] P8-05 Add Streamlit portfolio dashboards and assessment-level evidence,
+  scenario and PoC screens.
+- [x] P8-06 Add migration 0008 and offline regression tests covering economics,
+  ownership, reviewer roles, evidence freshness and PoC lifecycle.
+- [x] P8-07 Document arithmetic, incomplete-data semantics, versioned ranking,
+  limitations and independent release requirements.
+
+**Unverified / future production acceptance:**
+- [ ] P8-08 Execute the full integrated test suite, Alembic drift/lint and
+  authenticated UI/DB load scenarios in a controlled environment.
+- [ ] P8-09 Collect privacy-approved, representative field assessments,
+  blinded expert outcomes and PoC samples to calibrate ranking and verify
+  forecast accuracy, false-positive decisions and business impact.
+- [ ] P8-10 Add enterprise-safe evidence attachments, metrics ingestion,
+  comprehensive sensitivity/NPV, approved compliance controls and
+  cross-currency logic only if explicitly required and correctly sourced.
+- [ ] P8-11 Close all outstanding Phase 6/7 identity, privacy, security,
+  recovery and independent production-release gates.
+
+**Status:** Phase 8 source delivered; NOT certified, launched, or approved for
+personal/regulated business data. No GitHub-hosted runners used.

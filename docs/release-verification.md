@@ -90,3 +90,15 @@ The use of the words "security review" on a business workflow stage does not
 certify cybersecurity compliance. Security personnel still need verified IdP
 roles, reviewed policy, independent testing and their own acceptance evidence.
 The enterprise release gate remains CLOSED.
+
+
+## Phase 8 source verification (2026-10-18)
+
+Apply migration `0008_portfolio` and independently run
+`pytest -q tests/test_phase8_portfolio.py`, then all merged tests and
+`alembic check`. Check verified-evidence segregation, assessment revision
+staleness, mixed-currency non-aggregation, financial Decimal correctness,
+cross-tenant access and human PoC tracking. On live PostgreSQL test
+concurrent evidence/profile/observation writes. No new security certification
+is implied by these source changes: full identity, privacy, backup, pen test
+and named release-owner gates remain OPEN.

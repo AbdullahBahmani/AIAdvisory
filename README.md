@@ -275,3 +275,21 @@ this version. See [Phase 7 guide](docs/phase7.md) and
 experience is provided; enterprise browser SSO, SCIM, fine-grained approval
 policies, complete accessibility testing and external notification channels
 remain future work. Production release stays blocked.
+
+
+## Phase 8 — AI Opportunity Portfolio Intelligence (v0.8.0)
+
+A scoped portfolio dashboard can now rank *only sufficiently evidenced*
+opportunities by an explicitly provisional, versioned planning heuristic.
+Each assessment also has an evidence registry, separately authenticated
+human evidence verification, reproducible financial scenarios with Decimal
+math and immutable assumptions, and revision-bound PoC KPI/measurement
+tracking. Net labor scenarios are **not verified ROI**; target-met labels
+reflect entered observations, not validated causal impact.
+
+See [Phase 8 guide](docs/phase8.md) and
+[ADR-0008](docs/decisions/0008-portfolio-evidence.md). Apply migration
+`0008_portfolio` using `python -m alembic upgrade head` before starting.
+Portfolio values do not authorize operational execution, ignore safety gates,
+or certify an AI opportunity. The existing production startup guard remains
+closed pending the independent Phase 6/7 acceptance checklist.

@@ -97,3 +97,16 @@ enforcement and approved retention procedures.
 A protected pilot FDE final decision requires three current-revision human
 approvals; operational rollback/runbook and verified SSO/MFA still remain
 required before production. No source code change replaces external review.
+
+
+## Phase 8 data lifecycle / privacy
+
+Schema `0008_portfolio` adds opportunity profiles, evidence references,
+immutable value-scenario assumption snapshots and PoC measurements. Include
+these in encryption, per-tenant restore, data subject deletion, evidence
+retention, legal-hold and export-access reviews before production. Assessment
+hard deletion has cascading database foreign keys; verify live PostgreSQL
+behaviour and backup retention rather than assuming cascading erasure
+satisfies GDPR. The public `/ready` check now expects migration
+`0008_portfolio`. No new external provider/agent or business execution
+permissions are introduced.
