@@ -35,6 +35,11 @@ def _active_member(db: Session, subject: str, org: str) -> bool:
         OidcMembershipRow.organization_id == org,
         OidcMembershipRow.subject == subject,
         OidcMembershipRow.active.is_(True),
+        OidcMembershipRow.issuer == os.getenv("ADVISORY_OIDC_ISSUER"),
+    )).all() if os.getenv("ADVISORY_OIDC_REQUIRED") == "1" else db.scalars(select(OidcMembershipRow).where(
+        OidcMembershipRow.organization_id == org,
+        OidcMembershipRow.subject == subject,
+        OidcMembershipRow.active.is_(True),
     )).all()
     if any(ROLE_LEVEL.get(m.role, 0) >= ROLE_LEVEL["reviewer"] for m in memberships):
         return True

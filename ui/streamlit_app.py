@@ -173,6 +173,19 @@ def _dashboard(st, base_url: str) -> dict | None:
     if not rows:
         st.info("Create an assessment to begin guided discovery.")
         return None
+    search = st.text_input("Search assessments", placeholder="Filter by title, owner or organization")
+    statuses = ["All"] + sorted({row["status"] for row in rows})
+    chosen_status = st.selectbox("Status filter", statuses)
+    if search.strip():
+        term = search.casefold().strip()
+        rows = [r for r in rows if term in " ".join([
+            r.get("title") or "", r.get("owner") or "", r.get("organization") or ""
+        ]).casefold()]
+    if chosen_status != "All":
+        rows = [r for r in rows if r["status"] == chosen_status]
+    if not rows:
+        st.info("No assessments match the current filters.")
+        return None
     by_id = {row["id"]: row for row in rows}
     current = st.session_state.get("assessment_id")
     options = list(by_id)
@@ -452,7 +465,7 @@ def main() -> None:
 
     st.set_page_config(page_title="AI Opportunity Advisor", page_icon="🧭", layout="wide")
     st.title("AI Opportunity Advisor")
-    st.caption("Phase 4 · Persistent advisory assessments, optional AI proposals and report exports")
+    st.caption("Phase 7 · Team collaboration, human reviews and organization workspace")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
     st.warning("Pilot code only — no production approval or verified SSO browser session. Use only synthetic, non-sensitive data.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
@@ -464,6 +477,10 @@ def main() -> None:
         health = fetch_api_health(base_url)
         st.success(f"API connected · {health['service']} · {health['version']} · {health['mode']}")
         _ASSESSMENT_REVISION.set(None)
+        from ui.collaboration import render_workspace
+        if st.sidebar.radio("Navigation", ["Assessments", "Workspace"]) == "Workspace":
+            render_workspace(st, base_url)
+            return
         assessment = _dashboard(st, base_url)
         if assessment:
             _ASSESSMENT_REVISION.set(assessment["revision"])

@@ -13,7 +13,7 @@ def test_health_is_public_and_rules_only() -> None:
     assert response.json() == {
         "status": "ok",
         "service": "ai-opportunity-advisor-api",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "mode": "rules-only",
     }
 

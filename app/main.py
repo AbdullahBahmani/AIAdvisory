@@ -28,7 +28,7 @@ from app.domain.schemas import (
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
 
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 
 check_deployment_configuration()
 
