@@ -61,7 +61,7 @@ def api_request(
     if tenant:
         headers["X-Organization-ID"] = tenant
     revision = _ASSESSMENT_REVISION.get()
-    if revision is not None and method in {"POST", "PATCH", "DELETE"} and path != "/api/v1/assessments":
+    if revision is not None and method in {"POST", "PUT", "PATCH", "DELETE"} and path != "/api/v1/assessments":
         headers["If-Match"] = f'"{revision}"'
     if reviewer_token:
         headers["X-Reviewer-Token"] = reviewer_token

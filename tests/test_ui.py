@@ -95,3 +95,16 @@ def test_api_client_sends_current_assessment_revision_on_write():
         assert request.get_header("If-match") == '"8"'
     finally:
         _ASSESSMENT_REVISION.reset(current)
+
+
+def test_api_client_sends_revision_on_reviewer_assignment():
+    from ui.streamlit_app import api_request, _ASSESSMENT_REVISION
+    current = _ASSESSMENT_REVISION.set(12)
+    try:
+        response = FakeResponse(json.dumps({"reviewer_subject": "fde"}).encode())
+        with patch("ui.streamlit_app.urlopen", return_value=response) as mocked:
+            api_request("http://127.0.0.1:8000", "PUT",
+                        "/api/v1/assessments/abc/reviewer", {"reviewer_subject": "fde"})
+        assert mocked.call_args.args[0].get_header("If-match") == '"12"'
+    finally:
+        _ASSESSMENT_REVISION.reset(current)
