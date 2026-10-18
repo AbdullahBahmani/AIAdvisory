@@ -168,3 +168,12 @@ def test_invalid_auth_and_missing_assessment_fail_closed(secure_client):
                  "/api/v1/assessments/fake/portfolio-profile"):
         assert client.get(path).status_code == 401
     assert client.get("/api/v1/assessments/fake/evidence", headers=owner).status_code == 404
+
+
+def test_policy_gated_opportunity_is_not_ranked_by_business_weights():
+    result = priority_result(
+        alignment=5, urgency=5, effort=1,
+        verified_sources=3, analysis_fresh=True, policy_gated=True,
+    )
+    assert result["priority_score"] is None
+    assert "deterministic_policy_requires_discovery_or_human_decision" in result["missing"]

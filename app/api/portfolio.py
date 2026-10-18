@@ -123,11 +123,17 @@ def portfolio_opportunities(
     for row in assessments:
         profile = profiles.get(row.id)
         evidence_count = verified_counts.get((row.id, row.revision), 0)
+        gated = any(
+            task.get("recommendation", {}).get("category") in {"more_discovery", "human_led"}
+            or any(hit.get("severity") == "block_provider_data" for hit in task.get("rule_hits", []))
+            for task in (row.analysis_snapshot or {}).get("tasks", [])
+        ) if _fresh(row) else False
         priority = priority_result(
             alignment=profile.strategic_alignment if profile else None,
             urgency=profile.urgency if profile else None,
             effort=profile.delivery_effort if profile else None,
             verified_sources=evidence_count, analysis_fresh=_fresh(row),
+            policy_gated=gated,
         )
         latest_scenario = latest.get((row.id, row.revision))
         forecast = None

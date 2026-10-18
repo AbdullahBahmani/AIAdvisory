@@ -26,6 +26,7 @@ def priority_result(
     effort: int | None,
     verified_sources: int,
     analysis_fresh: bool,
+    policy_gated: bool = False,
 ) -> dict[str, Any]:
     """A relative *planning heuristic*, never an AI-suitability verdict or ROI."""
     missing = []
@@ -39,6 +40,8 @@ def priority_result(
         missing.append("verified_current_revision_evidence")
     if not analysis_fresh:
         missing.append("current_revision_analysis")
+    if policy_gated:
+        missing.append("deterministic_policy_requires_discovery_or_human_decision")
     if missing:
         return {"priority_score": None, "status": "unranked", "missing": missing}
     assert alignment is not None and urgency is not None and effort is not None
