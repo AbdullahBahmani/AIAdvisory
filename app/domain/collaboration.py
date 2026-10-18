@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Stage = Literal["technical", "security", "business"]
 Decision = Literal["approved", "changes_requested"]
@@ -12,6 +12,13 @@ Decision = Literal["approved", "changes_requested"]
 
 class CommentCreate(BaseModel):
     body: str = Field(min_length=3, max_length=2000)
+
+    @field_validator("body")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if len(value.strip()) < 3:
+            raise ValueError("Comment must contain meaningful text")
+        return value.strip()
 
 
 class CommentView(BaseModel):
@@ -36,6 +43,13 @@ class ApprovalCreate(BaseModel):
     stage: Stage
     decision: Decision
     rationale: str = Field(min_length=5, max_length=2000)
+
+    @field_validator("rationale")
+    @classmethod
+    def nonblank(cls, value: str) -> str:
+        if len(value.strip()) < 5:
+            raise ValueError("Approval requires a meaningful rationale")
+        return value.strip()
 
 
 class ApprovalView(ApprovalCreate):

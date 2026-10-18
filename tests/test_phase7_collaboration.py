@@ -127,3 +127,19 @@ def test_notification_inbox_scopes_and_read_receipt(secure_client):
     assert summary["assigned_to_me"] == 1
     assert summary["unread_notifications"] >= 1
     assert client.get("/api/v1/workspace/summary", headers=outsider).json()["total"] == 0
+
+
+def test_only_assigned_reviewer_can_record_review(secure_client):
+    client, provision, _ = secure_client
+    admin, _, _ = provision("Assigned", "admin", "admin")
+    primary, _, _ = provision("Assigned", "primary", "reviewer")
+    other, _, _ = provision("Assigned", "other", "reviewer")
+    aid = _assessment(client, admin)
+    assignment = client.put(f"/api/v1/assessments/{aid}/reviewer",
+                            json={"reviewer_subject": "primary"}, headers=admin)
+    assert assignment.status_code == 200
+    endpoint = f"/api/v1/assessments/{aid}/fde-review"
+    body = {"selected_category": "traditional_software", "rationale": "Rule-based math"}
+    assert client.post(endpoint, json={**body, "reviewer_id": "other"}, headers=other).status_code == 403
+    accepted = client.post(endpoint, json={**body, "reviewer_id": "primary"}, headers=primary)
+    assert accepted.status_code == 201, accepted.text

@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
-    AnswerRow, AssessmentRow, AuditRow, ReviewRow, StepRow, TaskRow, WorkflowRow,
+    AnswerRow, AssessmentRow, AuditRow, ReviewRow, ReviewerAssignmentRow, StepRow, TaskRow, WorkflowRow,
 )
 from app.db.session import get_db
 from app.services.approval_chain import require_completed_approvals
@@ -396,6 +396,18 @@ def recommendations(assessment_id: str, db: Session = Depends(get_db)):
     return {"tasks": [{"task_id": t["task_id"], "recommendation": t["recommendation"]} for t in snapshot["tasks"]]}
 
 
+def require_assigned_reviewer(db: Session, assessment: AssessmentRow) -> None:
+    """Assignment is binding for authenticated reviewer actions, not just UI metadata."""
+    principal = current_principal(db)
+    if principal.demo or principal.role == "admin":
+        return
+    assignment = db.scalar(select(ReviewerAssignmentRow).where(
+        ReviewerAssignmentRow.assessment_id == assessment.id,
+    ))
+    if assignment is not None and assignment.reviewer_subject != principal.subject:
+        raise HTTPException(status_code=403, detail="Only the assigned reviewer may review or finalize")
+
+
 @router.post("/assessments/{assessment_id}/fde-review", response_model=StoredReview, status_code=201)
 def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depends(get_db)):
     if not current_principal(db).demo:
@@ -406,6 +418,7 @@ def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depe
     principal = current_principal(db)
     if not principal.demo and payload.reviewer_id != principal.subject:
         raise HTTPException(status_code=403, detail="Reviewer label must match credential subject")
+    require_assigned_reviewer(db, row)
     review = ReviewRow(assessment_id=row.id, analysis_revision=row.revision,
                        identity_verified=not principal.demo, **payload.model_dump(mode="json"))
     db.add(review)
@@ -424,6 +437,7 @@ def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(def
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     require_analysis(row)
+    require_assigned_reviewer(db, row)
     review = next((r for r in reversed(row.reviews) if r.analysis_revision == row.revision and not r.is_final), None)
     if review is None:
         raise HTTPException(status_code=409, detail="Record an FDE review first")
