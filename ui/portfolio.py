@@ -46,6 +46,8 @@ def render_portfolio_dashboard(st, base: str) -> None:
             "Assessment": entry["title"], "Status": entry["status"],
             "Planning priority": entry["priority"]["priority_score"],
             "Evidence verified": entry["verified_evidence_count"],
+            "PoCs measured": entry["poc_outcomes"]["measured"],
+            "KPI targets met*": entry["poc_outcomes"]["targets_met"],
             "Illustrative net per period": (
                 f"{forecast['net_savings']} {forecast['currency']}/{forecast['period']}"
                 if forecast else "Unknown"
@@ -53,6 +55,7 @@ def render_portfolio_dashboard(st, base: str) -> None:
             "Missing": ", ".join(entry["priority"]["missing"]) or "—",
         })
     st.dataframe(data, hide_index=True, use_container_width=True)
+    st.caption("* Targets reflect self-reported observations and are not validated causal impacts.")
     by_id = {r["assessment_id"]: r for r in rows}
     chosen = st.selectbox("Open an opportunity", options=list(by_id),
                           format_func=lambda k: by_id[k]["title"])

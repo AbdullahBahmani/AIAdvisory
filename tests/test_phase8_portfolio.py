@@ -177,3 +177,27 @@ def test_policy_gated_opportunity_is_not_ranked_by_business_weights():
     )
     assert result["priority_score"] is None
     assert "deterministic_policy_requires_discovery_or_human_decision" in result["missing"]
+
+
+def test_portfolio_rolls_up_only_current_poc_outcomes(secure_client):
+    client, provision, _ = secure_client
+    admin, _, _ = provision("Outcomes", "admin", "admin")
+    aid = _assessment(client, admin)
+    root = f"/api/v1/assessments/{aid}"
+    plan = client.post(root + "/pocs", headers=admin, json={
+        "kpi_name": "Cases resolved", "unit": "cases",
+        "direction": "higher", "baseline": "5", "target": "10",
+        "success_criteria": "Demonstrate at least ten resolved synthetic cases",
+    })
+    assert plan.status_code == 201, plan.text
+    poc = plan.json()["id"]
+    assert client.post(root + f"/pocs/{poc}/start", headers=admin).status_code == 200
+    assert client.post(root + f"/pocs/{poc}/observations",
+        headers=admin, json={"actual": "12", "source_reference": "Synthetic sample"}).status_code == 201
+    entries = client.get("/api/v1/portfolio/opportunities", headers=admin).json()["items"]
+    assert entries[0]["poc_outcomes"]["measured"] == 1
+    assert entries[0]["poc_outcomes"]["targets_met"] == 1
+    assert entries[0]["poc_outcomes"]["self_reported"] is True
+    assert client.patch(root, headers=admin, json={"title": "Change"}).status_code == 200
+    entries = client.get("/api/v1/portfolio/opportunities", headers=admin).json()["items"]
+    assert entries[0]["poc_outcomes"]["measured"] == 0

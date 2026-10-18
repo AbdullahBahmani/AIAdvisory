@@ -119,6 +119,18 @@ def portfolio_opportunities(
     for scenario in scenarios:
         latest.setdefault((scenario.assessment_id, scenario.assessment_revision), scenario)
 
+    plans = db.scalars(
+        select(PocPlanRow).where(PocPlanRow.assessment_id.in_(ids))
+    ).all()
+    observation_by_plan = {}
+    if plans:
+        observations = db.scalars(
+            select(PocObservationRow).where(PocObservationRow.poc_id.in_([p.id for p in plans]))
+            .order_by(PocObservationRow.created_at.desc(), PocObservationRow.id.desc())
+        ).all()
+        for obs in observations:
+            observation_by_plan.setdefault(obs.poc_id, obs)
+
     results = []
     for row in assessments:
         profile = profiles.get(row.id)
@@ -144,10 +156,27 @@ def portfolio_opportunities(
                 "period": scenario.period, "net_savings": str(scenario.net_savings),
                 "illustrative_only": True,
             }
+        current_plans = [
+            p for p in plans if p.assessment_id == row.id
+            and p.assessment_revision == row.revision
+        ]
+        measured = [p for p in current_plans if p.status == "measured"]
+        target_met = 0
+        for plan in measured:
+            observation = observation_by_plan.get(plan.id)
+            if observation is not None and _observation_view(
+                observation, PocPlanIn.model_validate(plan.inputs)
+            ).target_met:
+                target_met += 1
         results.append({
             "assessment_id": row.id, "title": row.title, "status": row.status,
             "revision": row.revision, "priority": priority,
             "verified_evidence_count": evidence_count, "latest_forecast": forecast,
+            "poc_outcomes": {
+                "plans": len(current_plans), "measured": len(measured),
+                "targets_met": target_met,
+                "self_reported": True,
+            },
         })
     results.sort(key=lambda item: (
         item["priority"]["priority_score"] is None,
