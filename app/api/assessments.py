@@ -429,7 +429,7 @@ def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(def
         raise HTTPException(status_code=409, detail="Record an FDE review first")
     if not principal.demo and principal.role != "admin" and review.reviewer_id != principal.subject:
         raise HTTPException(status_code=403, detail="Only the reviewing FDE or organization admin can finalize")
-    if not principal.demo and os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower() == "pilot":
+    if not principal.demo and (os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower() == "pilot" or os.getenv("ADVISORY_REQUIRE_APPROVAL_CHAIN") == "1"):
         require_completed_approvals(db, row)
     review.is_final = True
     row.status = "finalized"
