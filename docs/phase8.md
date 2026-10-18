@@ -71,6 +71,7 @@ python -m alembic upgrade head
 python -m alembic check
 python -m pytest -q tests/test_phase8_portfolio.py
 python -m pytest -q
+python -m app.portfolio_evaluation
 ruff check .
 ruff format --check .
 python -m app.evaluation
