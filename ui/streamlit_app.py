@@ -465,7 +465,7 @@ def main() -> None:
 
     st.set_page_config(page_title="AI Opportunity Advisor", page_icon="🧭", layout="wide")
     st.title("AI Opportunity Advisor")
-    st.caption("Phase 7 · Team collaboration, human reviews and organization workspace")
+    st.caption("Phase 8 · Opportunity portfolios, value scenarios and measurable PoC outcomes")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
     st.warning("Pilot code only — no production approval or verified SSO browser session. Use only synthetic, non-sensitive data.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
@@ -478,17 +478,22 @@ def main() -> None:
         st.success(f"API connected · {health['service']} · {health['version']} · {health['mode']}")
         _ASSESSMENT_REVISION.set(None)
         from ui.collaboration import render_workspace
-        if st.sidebar.radio("Navigation", ["Assessments", "Workspace"]) == "Workspace":
+        from ui.portfolio import render_portfolio_dashboard, render_assessment_portfolio
+        view = st.sidebar.radio("Navigation", ["Assessments", "Workspace", "Portfolio"], key="primary_view")
+        if view == "Workspace":
             render_workspace(st, base_url)
+            return
+        if view == "Portfolio":
+            render_portfolio_dashboard(st, base_url)
             return
         assessment = _dashboard(st, base_url)
         if assessment:
             _ASSESSMENT_REVISION.set(assessment["revision"])
             st.caption(f"Status: {assessment['status']} · Revision: {assessment['revision']} · ID: {assessment['id']}")
             from ui.collaboration import render_collaboration, render_workspace
-            intake, discovery, workflow, analysis, advisor, review, report, collaboration, workspace = st.tabs([
+            intake, discovery, workflow, analysis, advisor, review, report, collaboration, workspace, portfolio = st.tabs([
                 "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review", "7 · Reports",
-                "8 · Collaboration", "9 · Workspace",
+                "8 · Collaboration", "9 · Workspace", "10 · Portfolio",
             ])
             with intake:
                 _intake(st, base_url, assessment)
@@ -508,6 +513,8 @@ def main() -> None:
                 render_collaboration(st, base_url, assessment)
             with workspace:
                 render_workspace(st, base_url)
+            with portfolio:
+                render_assessment_portfolio(st, base_url, assessment)
         with st.expander("Stateless rules-only preview (legacy Phase 1)"):
             raw = st.text_area("Preview JSON", value=json.dumps(DEMO_PAYLOAD, indent=2), height=220)
             if st.button("Run preview"):

@@ -108,3 +108,12 @@ def test_api_client_sends_revision_on_reviewer_assignment():
         assert mocked.call_args.args[0].get_header("If-match") == '"12"'
     finally:
         _ASSESSMENT_REVISION.reset(current)
+
+
+def test_financial_ui_rejects_implicit_missing_numbers():
+    from ui.portfolio import _decimal
+    import pytest
+    assert _decimal("1.25", "Cost") == "1.25"
+    for invalid in ("", "NaN", "-1", "Infinity", "not-a-number"):
+        with pytest.raises(ValueError):
+            _decimal(invalid, "Cost")
