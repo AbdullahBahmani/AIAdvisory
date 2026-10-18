@@ -178,3 +178,48 @@ class RequestLimitRow(Base):
     identity_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     minute_bucket: Mapped[int] = mapped_column(Integer, primary_key=True)
     requests: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ReviewerAssignmentRow(Base):
+    """One assigned reviewer per assessment; organization derives from assessment."""
+    __tablename__ = "reviewer_assignments"
+    __table_args__ = (UniqueConstraint("assessment_id", name="uq_reviewer_assignment_assessment"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
+    reviewer_subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    assigned_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class AssessmentCommentRow(Base):
+    __tablename__ = "assessment_comments"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    author: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class ApprovalRow(Base):
+    __tablename__ = "approval_votes"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    stage: Mapped[str] = mapped_column(String(20), nullable=False)
+    decision: Mapped[str] = mapped_column(String(30), nullable=False)
+    actor: Mapped[str] = mapped_column(String(200), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+class InboxNotificationRow(Base):
+    __tablename__ = "inbox_notifications"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    organization_id: Mapped[str] = mapped_column(ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False)
+    recipient: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    message: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

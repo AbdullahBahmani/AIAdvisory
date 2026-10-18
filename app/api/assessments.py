@@ -12,6 +12,7 @@ from app.db.models import (
     AnswerRow, AssessmentRow, AuditRow, ReviewRow, StepRow, TaskRow, WorkflowRow,
 )
 from app.db.session import get_db
+from app.services.approval_chain import require_completed_approvals
 from app.concurrency import assert_current_revision
 from app.security import current_principal, require_role, require_reviewer_or_local_demo
 from app.domain.persistence import (
@@ -428,6 +429,8 @@ def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(def
         raise HTTPException(status_code=409, detail="Record an FDE review first")
     if not principal.demo and principal.role != "admin" and review.reviewer_id != principal.subject:
         raise HTTPException(status_code=403, detail="Only the reviewing FDE or organization admin can finalize")
+    if not principal.demo and os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower() == "pilot":
+        require_completed_approvals(db, row)
     review.is_final = True
     row.status = "finalized"
     audit(db, row, "fde.finalized", actor=review.reviewer_id, review_id=review.id, identity_unverified=principal.demo)
