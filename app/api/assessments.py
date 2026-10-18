@@ -447,7 +447,7 @@ def reopen_assessment(assessment_id: str, x_reviewer_token: str | None = Header(
         raise HTTPException(status_code=409, detail="Only finalized assessments need reopening")
     assert_current_revision(row)
     change_reopen(row)
-    audit(db, row, "fde.local_demo_reopened", identity_unverified=True)
+    audit(db, row, "fde.reopened", identity_unverified=current_principal(db).demo)
     db.commit()
     return detail(row)
 
