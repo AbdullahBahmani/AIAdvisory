@@ -100,3 +100,30 @@ def test_production_remains_blocked_even_with_pilot_configuration(monkeypatch):
     monkeypatch.setenv("ADVISORY_DEPLOYMENT_MODE", "production")
     with pytest.raises(RuntimeError, match="Production deployment blocked"):
         check_deployment_configuration()
+
+
+def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
+    from fastapi.testclient import TestClient
+    from sqlalchemy import text
+    from app.main import app
+    from app.db.session import get_db
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'readiness.sqlite3'}",
+                           connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+
+    def override_db():
+        with Session(engine) as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    try:
+        with TestClient(app) as client:
+            assert client.get("/ready").status_code == 503
+            with engine.begin() as connection:
+                connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+                connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0006_concurrency')"))
+            assert client.get("/ready").json() == {"status": "ready"}
+    finally:
+        app.dependency_overrides.clear()
+        engine.dispose()
