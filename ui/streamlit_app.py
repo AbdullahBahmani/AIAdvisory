@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
 _API_BEARER: ContextVar[str | None] = ContextVar("api_bearer", default=None)
 _API_ORGANIZATION: ContextVar[str | None] = ContextVar("api_org", default=None)
+_ASSESSMENT_REVISION: ContextVar[int | None] = ContextVar("assessment_revision", default=None)
 
 DEMO_PAYLOAD = {
     "title": "Exact pricing calculation (demonstration)",
@@ -59,6 +60,9 @@ def api_request(
     tenant = _API_ORGANIZATION.get()
     if tenant:
         headers["X-Organization-ID"] = tenant
+    revision = _ASSESSMENT_REVISION.get()
+    if revision is not None and method in {"POST", "PATCH", "DELETE"} and path != "/api/v1/assessments":
+        headers["If-Match"] = f'"{revision}"'
     if reviewer_token:
         headers["X-Reviewer-Token"] = reviewer_token
     if ai_access_token:
@@ -450,7 +454,7 @@ def main() -> None:
     st.title("AI Opportunity Advisor")
     st.caption("Phase 4 · Persistent advisory assessments, optional AI proposals and report exports")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
-    st.warning("Local developer demo only — synthetic, non-sensitive data. No authentication or tenancy.")
+    st.warning("Pilot code only — no production approval or verified SSO browser session. Use only synthetic, non-sensitive data.")
     base_url = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL)
     st.sidebar.text_input("Organization API credential (not a login session)", type="password", key="api_bearer")
     _API_BEARER.set(st.session_state.get("api_bearer") or None)
@@ -459,8 +463,10 @@ def main() -> None:
     try:
         health = fetch_api_health(base_url)
         st.success(f"API connected · {health['service']} · {health['version']} · {health['mode']}")
+        _ASSESSMENT_REVISION.set(None)
         assessment = _dashboard(st, base_url)
         if assessment:
+            _ASSESSMENT_REVISION.set(assessment["revision"])
             st.caption(f"Status: {assessment['status']} · Revision: {assessment['revision']} · ID: {assessment['id']}")
             intake, discovery, workflow, analysis, advisor, review, report = st.tabs([
                 "1 · Intake", "2 · Discovery", "3 · Workflow", "4 · Analysis", "5 · AI advisor", "6 · FDE review", "7 · Reports",

@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.ai.prompts import prompt_for
+from app.ai.data_guard import assert_no_obvious_sensitive_data
 from app.ai.provider import AIProvider, ProviderFailure
 from app.ai.schemas import (AIRunRecord, AIRequest, Feature, PROMPT_VERSION, SCHEMA_VERSION,
                             SCHEMAS)
@@ -88,8 +89,9 @@ def _privacy_gate(row: AssessmentRow, payload: AIRequest) -> None:
                     raise HTTPException(status_code=403, detail="Provider processing prohibited by task data policy")
                 if signals.get("sensitive_data") is True and signals.get("provider_data_permitted") is not True:
                     raise HTTPException(status_code=403, detail="Sensitive task requires explicit provider permission")
-    # There is no enterprise consent or DLP integration. Never claim that user attestation
-    # proves compliance. The README limits this route to approved synthetic data.
+    # Defense in depth: conservative pattern matching over outbound model context.
+    assert_no_obvious_sensitive_data(_context(row))
+    # This is not enterprise DLP, consent verification, or provider permission.
 
 
 def _check_references(feature: Feature, proposal: dict, context: dict) -> None:

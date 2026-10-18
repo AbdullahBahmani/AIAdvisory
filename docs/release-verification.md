@@ -41,3 +41,37 @@ docker compose up --build
 - [ ] Assign accountable release approver and verify rollback/incident runbooks and evidence before disabling the production guard in a reviewed change.
 
 The available environment had Python 3.13, lacked a Docker engine, had no network package cache for a 3.12 lock, and no connected IdP/PostgreSQL service. Do not record any of these gates as passing solely because this Markdown file exists.
+
+
+## Phase 6 source hardening — NOT release approval (2026-10-18)
+
+The Phase 6 code adds a database optimistic-concurrency column (migration 0006),
+`If-Match` revision preconditions for authenticated pilot writes, HTTP 409 on
+concurrent database updates, read-only `/ready` schema probe, narrow outbound
+AI-context screening for common emails and credentials, and fail-closed pilot
+configuration (OIDC-only, PostgreSQL, `sslmode=verify-full`).
+
+The Streamlit API client now supplies assessment revisions on writes, but it is
+**not** an interactive OIDC login, does not implement secure server-side sessions
+and is not an enterprise SSO browser app. A regex is not a substitute for DLP.
+
+Run on a trusted machine (no GitHub-hosted runners):
+
+```bash
+python -m pip install -e '.[dev,postgres]'
+python -m alembic upgrade head
+python -m alembic check
+python -m pytest -q
+python -m app.evaluation
+ruff check .
+ruff format --check .
+python -m app.enterprise_release
+```
+
+Then collect timestamped evidence from real PostgreSQL concurrency/load/restore
+tests, full SSO/MFA/browser tests, external TLS/WAF, vulnerability scans, a security
+review, incident/rollback drills, DPA/DPIA, regional retention/provider governance
+and a named independent approver. **These checks have NOT been executed or
+certified just because source files were committed. The production startup guard
+remains CLOSED.** Do not put personal, customer or regulated data into this
+prototype until the appropriate review gates are actually satisfied.

@@ -367,3 +367,31 @@ An FDE can, using the app and not manual DB edits:
 ## Implementation handoff / independent release acceptance — 2026-10-13
 
 The application code is consolidated on the repository's `main` branch; no PR or runner is required. The new OIDC flow, SQL limiter, SQLite backup and tenant-scoped retention operations have locally executed unit/API tests. The API deliberately **refuses** the `production` deployment mode. **Do not mark Phase 5 P5-07 complete** until the organization provides a real IdP + MFA, independent access-control verification, a deployed PostgreSQL backup/restore drill, DPA/DLP/residency/retention approval, managed TLS/ingress rate limits, external monitoring, vulnerability scanning/penetration test, Python 3.12 lock, Ruff/full AI suite, and live Docker/Streamlit verification. See `docs/release-verification.md` for executable local checks and evidence requests. Updating a checkbox requires verifiable evidence, not merely a source-code commit.
+
+
+## Phase 6 — enterprise production foundation (2026-10-18)
+
+**Source code delivered (subject to local verification):**
+- [x] P6-01 Add optimistic assessment row locking and migration 0006; detect
+  stale simultaneous writes and respond 409. Authenticated pilot mutations
+  require `If-Match` assessment revision (428 missing, 412 stale).
+- [x] P6-02 Strengthen pilot boot: OIDC-only, PostgreSQL and `sslmode=verify-full`.
+  Keep production mode deliberately blocked.
+- [x] P6-03 Add schema-aware read-only `/ready`, separate from `/health`.
+- [x] P6-04 Add conservative sensitive-context checks to the optional AI path;
+  this does not provide complete DLP or permission to process real personal data.
+- [x] P6-05 Add offline regression tests and a release-gate inventory.
+
+**External work remaining (production gate CLOSED):**
+- [ ] P6-06 Run full merged tests, lint and dependency lock verification, and
+  authenticated browser SSO/MFA/CSRF tests on the *actual* integrated deployment.
+- [ ] P6-07 Test production PostgreSQL isolation, concurrent writes, schema
+  upgrades, load, off-site encrypted backups and timed restore (RPO/RTO).
+- [ ] P6-08 Provision edge TLS/WAF, metrics/alerts, managed secrets, vulnerability
+  scans and independent penetration test, and drill incident response/rollback.
+- [ ] P6-09 Approve contracts, DPIA/DPA, residency, deletion, retention, DLP and
+  AI model-provider governance; receive accountable written release approval.
+
+**No GitHub-hosted runners are used.** Do not relax `ADVISORY_DEPLOYMENT_MODE=production`
+for convenience; missing real-world controls cannot be implemented or
+independently attested to by a source-code commit.

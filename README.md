@@ -233,3 +233,27 @@ python -m scripts.admin prune-ratelimits
 ```
 
 `ADVISORY_DEPLOYMENT_MODE=production` deliberately **refuses to boot** until independent security/operations release sign-off is completed. Do not bypass this by labeling a real deployment `local` or `pilot`. See [release verification](docs/release-verification.md), [operations](docs/operations.md), and [ADR-0006](docs/decisions/0006-oidc-ratelimit-and-release-guard.md). No hosted GitHub runners are enabled.
+
+
+## Phase 6 — additional enterprise hardening (NOT a production release)
+
+Migration `0006_concurrency` adds optimistic row versioning. In authenticated
+pilot mode, changes to a saved assessment require `If-Match: "<revision>"`
+(obtain the revision or `ETag` from `GET /api/v1/assessments/{id}`).
+Missing preconditions return HTTP 428, stale revisions HTTP 412, and overlapping
+database transactions return HTTP 409. Local demo clients remain backwards
+compatible. Only the current assessment revision is an API precondition; always
+reload after an edit conflict.
+
+`ADVISORY_DEPLOYMENT_MODE=pilot` now requires `ADVISORY_OIDC_REQUIRED=1`,
+a PostgreSQL URL with `sslmode=verify-full`, and a valid pinned OIDC issuer,
+audience and JWKS endpoint. `GET /ready` checks the database's migration
+version, not deployment security or launch approval. External model calls have
+an additional conservative email/credential check on the outbound context,
+but this **does not** amount to DLP or a compliant provider agreement.
+
+Source changes are not a substitute for a real IdP login flow, external WAF,
+privacy sign-off, live PostgreSQL restore drill, penetration test, or supervised
+production release. `ADVISORY_DEPLOYMENT_MODE=production` intentionally
+continues to refuse startup. See `docs/release-verification.md` for the
+remaining gates; run checks locally without GitHub Actions runners.
