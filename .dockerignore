@@ -1,16 +1,30 @@
+# Build context exclusions. Keep the context small and free of local state.
 .git
 .github
 .venv
 __pycache__
+*.pyc
+*.pyo
 .pytest_cache
 .ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+# Local secrets and state must never enter the image.
 .env
 .env.*
 *.sqlite3
 *.sqlite
 *.db
 demo_out/
-tests/
-evals/
+# Documentation and evaluation data are not needed at runtime.
 docs/
-scripts/
+evals/
+main-planner.md
+# Test modules are not shipped in the runtime image. scripts/demo.py (the only
+# consumer of tests/fixtures) is excluded as well, because it needs the dev
+# extra; the operator CLIs scripts/admin.py and scripts/maintenance.py are
+# kept and depend only on runtime dependencies.
+tests/
+scripts/demo.py
+.DS_Store

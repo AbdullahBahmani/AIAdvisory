@@ -1,11 +1,40 @@
-# Local demo only: each host port binds to loopback; no hosted runners.
+# Local demo deployment only.
+#
+# Safety posture:
+#   * Every host port binds to 127.0.0.1; nothing is reachable from the LAN.
+#   * The AI provider is hard-disabled (ADVISORY_AI_ENABLED=0) and no AI key
+#     is present, required or forwarded anywhere.
+#   * ADVISORY_DEMO_MODE=1 is the explicit synthetic-data-only local switch.
+#     It is refused outside ADVISORY_DEPLOYMENT_MODE=local, and the
+#     production deployment guard is untouched: ADVISORY_DEPLOYMENT_MODE=
+#     production still refuses to boot.
+#   * No secret is stored in this file. ADVISORY_REVIEW_TOKEN is passed
+#     through from the operator's shell (if any) and is never committed.
+#
+# Usage:
+#   docker compose build
+#   docker compose up -d
+#   curl -sS http://127.0.0.1:8000/health
+#   docker compose down -v
+
+x-app-image: &app-image
+  build:
+    context: .
+  image: aiadvisory-local:0.8.0
+
 services:
   api:
-    build: .
+    <<: *app-image
     environment:
-      DATABASE_URL: sqlite:////data/aiadvisory.sqlite3
+      # Explicit local mode; the production startup guard remains in force.
+      ADVISORY_DEPLOYMENT_MODE: "local"
+      DATABASE_URL: "sqlite:////data/aiadvisory.sqlite3"
       ADVISORY_AI_ENABLED: "0"
-      ADVISORY_DEMO_MODE: "1"   # EXPLICIT synthetic-data-only demo switch; never deploy as production
+      # EXPLICIT synthetic-data-only demo switch; never deploy as production.
+      ADVISORY_DEMO_MODE: "1"
+      # Optional operator-supplied local reviewer secret (>=16 characters).
+      # Empty by default; never committed, never required to boot.
+      ADVISORY_REVIEW_TOKEN: "${ADVISORY_REVIEW_TOKEN:-}"
     volumes:
       - app-data:/data
     ports:
@@ -14,21 +43,42 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 8
-      start_period: 15s
+      retries: 12
+      start_period: 20s
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 10s
+
   ui:
-    build: .
+    <<: *app-image
     command: ["streamlit", "run", "ui/streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
     environment:
-      API_BASE_URL: http://api:8000
+      API_BASE_URL: "http://api:8000"
+      HOME: "/tmp"
     ports:
       - "127.0.0.1:8501:8501"
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    stop_grace_period: 10s
+
 volumes:
   app-data:
