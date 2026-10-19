@@ -47,16 +47,16 @@ class OpenAIProvider:
         # JSON mode plus independent Pydantic validation supports models without strict-schema mode.
         body = {
             "model": self.model,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "response_format": {"type": "json_object"},
             "max_completion_tokens": 1300,
             "store": False,
         }
         req = Request(
-            ENDPOINT, data=json.dumps(body).encode("utf-8"), method="POST",
-            headers={"Content-Type": "application/json",
-                     "Authorization": "Bearer " + self.api_key},
+            ENDPOINT,
+            data=json.dumps(body).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json", "Authorization": "Bearer " + self.api_key},
         )
         # One retry, only on throttling/temporary server errors, with a short bounded delay.
         for attempt in range(2):
@@ -73,7 +73,9 @@ class OpenAIProvider:
                     raise ProviderFailure("Provider refused or omitted structured output")
                 usage = parsed.get("usage") or {}
                 return ProviderResult(
-                    content=choice["content"], provider="openai", model=self.model,
+                    content=choice["content"],
+                    provider="openai",
+                    model=self.model,
                     input_tokens=usage.get("prompt_tokens"),
                     output_tokens=usage.get("completion_tokens"),
                 )
@@ -82,8 +84,20 @@ class OpenAIProvider:
                     time.sleep(0.3)
                     continue
                 raise ProviderFailure("Provider HTTP error") from None
-            except (URLError, OSError, TimeoutError, ValueError, KeyError, IndexError,
-                    TypeError, json.JSONDecodeError) as exc:
+            except (
+                URLError,
+                OSError,
+                TimeoutError,
+                ValueError,
+                KeyError,
+                IndexError,
+                TypeError,
+                json.JSONDecodeError,
+            ):
+                # The original provider exception is deliberately not re-raised or
+                # chained: its text can echo response fragments or credentials.
+                # The failure itself is not swallowed - it is propagated as a
+                # ProviderFailure and surfaced by the caller as a safe HTTP 502.
                 raise ProviderFailure("Provider transport or response error") from None
         raise ProviderFailure("Provider unavailable")
 
@@ -91,7 +105,9 @@ class OpenAIProvider:
 def get_ai_provider() -> AIProvider:
     # Dependency injection allows offline mock providers in tests, with no actual external calls.
     if os.getenv("ADVISORY_AI_ENABLED") != "1":
-        raise HTTPException(status_code=503, detail="Optional AI disabled; rules-only mode remains available")
+        raise HTTPException(
+            status_code=503, detail="Optional AI disabled; rules-only mode remains available"
+        )
     key = os.getenv("ADVISORY_AI_API_KEY", "")
     if not key:
         raise HTTPException(status_code=503, detail="AI API key not configured")

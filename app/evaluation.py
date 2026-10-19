@@ -20,7 +20,10 @@ def evaluate_dataset(path: Path = DEFAULT_DATASET) -> dict:
         response = analyze(AssessmentPreviewRequest.model_validate(item["scenario"]))
         categories = [result.recommendation.category.value for result in response.tasks]
         expected = item["expected_category"]
-        checks = {"recommendation": bool(categories) and all(category == expected for category in categories)}
+        checks = {
+            "recommendation": bool(categories)
+            and all(category == expected for category in categories)
+        }
         if item.get("expected_controls"):
             checks["controls"] = bool(response.tasks) and all(
                 bool(task.recommendation.required_controls) or bool(task.rule_hits)
@@ -31,18 +34,34 @@ def evaluate_dataset(path: Path = DEFAULT_DATASET) -> dict:
                 hit.id == item["required_rule"] for task in response.tasks for hit in task.rule_hits
             )
         if item.get("expect_roi_missing"):
-            checks["roi_missing"] = response.value is None or response.value.potential_net_savings is None
+            checks["roi_missing"] = (
+                response.value is None or response.value.potential_net_savings is None
+            )
         checks["advisory_only"] = response.advisory_only is True
-        outputs.append({"id": item["id"], "expected": expected, "actual": categories,
-                        "passed": all(checks.values()), "checks": checks})
+        outputs.append(
+            {
+                "id": item["id"],
+                "expected": expected,
+                "actual": categories,
+                "passed": all(checks.values()),
+                "checks": checks,
+            }
+        )
     passed = sum(1 for result in outputs if result["passed"])
-    return {"dataset_version": dataset["dataset_version"], "total": len(outputs), "passed": passed,
-            "failed": len(outputs)-passed, "cases": outputs,
-            "warning": "Synthetic golden tests check regressions only, not real-world model quality."}
+    return {
+        "dataset_version": dataset["dataset_version"],
+        "total": len(outputs),
+        "passed": passed,
+        "failed": len(outputs) - passed,
+        "cases": outputs,
+        "warning": "Synthetic golden tests check regressions only, not real-world model quality.",
+    }
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Offline, no-provider policy regression evaluation")
+    parser = argparse.ArgumentParser(
+        description="Offline, no-provider policy regression evaluation"
+    )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     args = parser.parse_args()
     result = evaluate_dataset(args.dataset)

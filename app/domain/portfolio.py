@@ -1,4 +1,5 @@
 """Strict Phase 8 portfolio contracts; forecasts and priority are advisory."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -93,7 +94,6 @@ class PocPlanIn(BaseModel):
         if not value.strip():
             raise ValueError("Metric fields cannot be blank")
         return value.strip()
-
 
     @model_validator(mode="after")
     def target_direction_is_meaningful(self):

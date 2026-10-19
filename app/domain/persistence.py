@@ -7,7 +7,12 @@ from pydantic import Field
 
 from app.domain.enums import ActionType, DecisionType, RecommendationCategory
 from app.domain.schemas import (
-    Answer, AssessmentPreviewResponse, DomainModel, RiskInput, TaskSignals, ValueInputs,
+    Answer,
+    AssessmentPreviewResponse,
+    DomainModel,
+    RiskInput,
+    TaskSignals,
+    ValueInputs,
 )
 
 

@@ -1,4 +1,5 @@
 """Validated Phase 7 collaboration contracts (no production rollout authority)."""
+
 from __future__ import annotations
 
 from datetime import datetime

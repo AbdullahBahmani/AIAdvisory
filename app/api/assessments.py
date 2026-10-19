@@ -8,21 +8,46 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.concurrency import assert_current_revision
 from app.db.models import (
-    AnswerRow, AssessmentRow, AuditRow, ReviewRow, ReviewerAssignmentRow, StepRow, TaskRow, WorkflowRow,
+    AnswerRow,
+    AssessmentRow,
+    AuditRow,
+    ReviewerAssignmentRow,
+    ReviewRow,
+    StepRow,
+    TaskRow,
+    WorkflowRow,
 )
 from app.db.session import get_db
-from app.services.approval_chain import require_completed_approvals
-from app.concurrency import assert_current_revision
-from app.security import current_principal, require_role, require_reviewer_or_local_demo
 from app.domain.persistence import (
-    AssessmentCreate, AssessmentDetail, AssessmentPatch, AssessmentSummary, AuditEntry,
-    ReviewRequest, StepCreate, StepPatch, StoredAnswer, StoredReview, StoredStep,
-    StoredTask, StoredWorkflow, TaskCreate, TaskPatch, WorkflowCreate,
+    AssessmentCreate,
+    AssessmentDetail,
+    AssessmentPatch,
+    AssessmentSummary,
+    AuditEntry,
+    ReviewRequest,
+    StepCreate,
+    StepPatch,
+    StoredAnswer,
+    StoredReview,
+    StoredStep,
+    StoredTask,
+    StoredWorkflow,
+    TaskCreate,
+    TaskPatch,
+    WorkflowCreate,
 )
 from app.domain.schemas import (
-    Answer, AssessmentPreviewRequest, AssessmentPreviewResponse, DiscoveryResult, Task, WorkflowStep,
+    Answer,
+    AssessmentPreviewRequest,
+    AssessmentPreviewResponse,
+    DiscoveryResult,
+    Task,
+    WorkflowStep,
 )
+from app.security import current_principal, require_reviewer_or_local_demo, require_role
+from app.services.approval_chain import require_completed_approvals
 from app.services.assessment import analyze
 from app.services.discovery import summarize_discovery
 
@@ -49,7 +74,11 @@ def get_or_404(db: Session, model, identifier: str):
             parent = row.assessment
         else:
             raise HTTPException(status_code=404, detail="Resource not found")
-        if parent.organization_id is None or parent.organization_id != principal.organization_id or parent.status == "deleted":
+        if (
+            parent.organization_id is None
+            or parent.organization_id != principal.organization_id
+            or parent.status == "deleted"
+        ):
             raise HTTPException(status_code=404, detail="Resource not found")
     return row
 
@@ -57,16 +86,26 @@ def get_or_404(db: Session, model, identifier: str):
 def check_mutable(row: AssessmentRow) -> None:
     assert_current_revision(row)
     if row.status == "finalized":
-        raise HTTPException(status_code=409, detail="Finalized assessment must be explicitly reopened")
+        raise HTTPException(
+            status_code=409, detail="Finalized assessment must be explicitly reopened"
+        )
     if row.status == "deleted":
         raise HTTPException(status_code=404, detail="Resource not found")
 
 
-def audit(db: Session, row: AssessmentRow, event: str, *, actor: str = "local_demo", **details) -> None:
+def audit(
+    db: Session, row: AssessmentRow, event: str, *, actor: str = "local_demo", **details
+) -> None:
     principal = current_principal(db)
     # Never trust a submitted reviewer label as the authenticated audit actor.
-    db.add(AuditRow(assessment_id=row.id, event_type=event,
-                    actor=actor if principal.demo else principal.subject, details=details))
+    db.add(
+        AuditRow(
+            assessment_id=row.id,
+            event_type=event,
+            actor=actor if principal.demo else principal.subject,
+            details=details,
+        )
+    )
 
 
 def change_inputs(row: AssessmentRow) -> None:
@@ -90,16 +129,28 @@ def parent_for_task(db: Session, task: TaskRow) -> AssessmentRow:
 
 
 def task_out(row: TaskRow) -> StoredTask:
-    return StoredTask(id=row.id, title=row.title, description=row.description,
-                      decision_type=row.decision_type, signals=row.signals,
-                      actions=row.actions, risks=row.risks)
+    return StoredTask(
+        id=row.id,
+        title=row.title,
+        description=row.description,
+        decision_type=row.decision_type,
+        signals=row.signals,
+        actions=row.actions,
+        risks=row.risks,
+    )
 
 
 def step_out(row: StepRow) -> StoredStep:
-    return StoredStep(id=row.id, name=row.name, order=row.position,
-                      owner=row.owner, system=row.system,
-                      input_description=row.input_description, output_description=row.output_description,
-                      tasks=[task_out(t) for t in row.tasks])
+    return StoredStep(
+        id=row.id,
+        name=row.name,
+        order=row.position,
+        owner=row.owner,
+        system=row.system,
+        input_description=row.input_description,
+        output_description=row.output_description,
+        tasks=[task_out(t) for t in row.tasks],
+    )
 
 
 def workflow_out(row: WorkflowRow) -> StoredWorkflow:
@@ -107,45 +158,85 @@ def workflow_out(row: WorkflowRow) -> StoredWorkflow:
 
 
 def summary(row: AssessmentRow) -> AssessmentSummary:
-    return AssessmentSummary(id=row.id, title=row.title, status=row.status,
-                             revision=row.revision, organization=row.organization,
-                             owner=row.owner, updated_at=row.updated_at)
+    return AssessmentSummary(
+        id=row.id,
+        title=row.title,
+        status=row.status,
+        revision=row.revision,
+        organization=row.organization,
+        owner=row.owner,
+        updated_at=row.updated_at,
+    )
 
 
 def detail(row: AssessmentRow) -> AssessmentDetail:
     return AssessmentDetail(
-        id=row.id, title=row.title, organization=row.organization, owner=row.owner,
-        business_problem=row.business_problem, status=row.status, revision=row.revision,
-        value_inputs=row.value_inputs, minimum_net_value_per_period=row.minimum_net_value_per_period,
+        id=row.id,
+        title=row.title,
+        organization=row.organization,
+        owner=row.owner,
+        business_problem=row.business_problem,
+        status=row.status,
+        revision=row.revision,
+        value_inputs=row.value_inputs,
+        minimum_net_value_per_period=row.minimum_net_value_per_period,
         analysis_revision=row.analysis_revision,
-        analysis=AssessmentPreviewResponse.model_validate(row.analysis_snapshot) if row.analysis_snapshot else None,
+        analysis=AssessmentPreviewResponse.model_validate(row.analysis_snapshot)
+        if row.analysis_snapshot
+        else None,
         workflows=[workflow_out(w) for w in row.workflows],
-        answers=[StoredAnswer(id=a.id, key=a.key, value=a.value.get("value"), kind=a.kind,
-                              source=a.source, confidence=a.confidence, created_at=a.created_at)
-                 for a in row.answers],
-        reviews=[StoredReview(id=r.id, reviewer_id=r.reviewer_id,
-                              selected_category=r.selected_category, rationale=r.rationale,
-                              override_reason=r.override_reason, analysis_revision=r.analysis_revision,
-                              is_final=r.is_final, created_at=r.created_at,
-                              identity_unverified=not r.identity_verified) for r in row.reviews],
-        created_at=row.created_at, updated_at=row.updated_at,
+        answers=[
+            StoredAnswer(
+                id=a.id,
+                key=a.key,
+                value=a.value.get("value"),
+                kind=a.kind,
+                source=a.source,
+                confidence=a.confidence,
+                created_at=a.created_at,
+            )
+            for a in row.answers
+        ],
+        reviews=[
+            StoredReview(
+                id=r.id,
+                reviewer_id=r.reviewer_id,
+                selected_category=r.selected_category,
+                rationale=r.rationale,
+                override_reason=r.override_reason,
+                analysis_revision=r.analysis_revision,
+                is_final=r.is_final,
+                created_at=r.created_at,
+                identity_unverified=not r.identity_verified,
+            )
+            for r in row.reviews
+        ],
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
 def apply_patch(row, patch, field_mapping: dict[str, str] | None = None) -> None:
     values = patch.model_dump(exclude_unset=True, mode="json")
     for key, value in values.items():
-        if key in {"title", "name", "order", "decision_type", "signals", "actions", "risks"} and value is None:
+        if (
+            key in {"title", "name", "order", "decision_type", "signals", "actions", "risks"}
+            and value is None
+        ):
             raise HTTPException(status_code=422, detail=f"{key} cannot be null")
         setattr(row, (field_mapping or {}).get(key, key), value)
 
 
 def validate_review_category(row: AssessmentRow, category: str, override_reason: str | None):
     if not row.analysis_snapshot or row.analysis_revision != row.revision:
-        raise HTTPException(status_code=409, detail="Run analysis for the current assessment revision first")
+        raise HTTPException(
+            status_code=409, detail="Run analysis for the current assessment revision first"
+        )
     categories = {t["recommendation"]["category"] for t in row.analysis_snapshot["tasks"]}
     if category not in categories and not override_reason:
-        raise HTTPException(status_code=422, detail="Explain any override from analysis recommendations")
+        raise HTTPException(
+            status_code=422, detail="Explain any override from analysis recommendations"
+        )
 
 
 def require_local_reviewer(token: str | None, db: Session | None = None):
@@ -155,13 +246,18 @@ def require_local_reviewer(token: str | None, db: Session | None = None):
         raise HTTPException(status_code=403, detail="Reviewer credential required")
     configured = os.getenv("ADVISORY_REVIEW_TOKEN", "")
     if len(configured) < 16 or token is None or not secrets.compare_digest(token, configured):
-        raise HTTPException(status_code=403, detail="Explicit local reviewer token required; production identity is not supported")
+        raise HTTPException(
+            status_code=403,
+            detail="Explicit local reviewer token required; production identity is not supported",
+        )
 
 
 @router.post("/assessments", response_model=AssessmentDetail, status_code=201)
 def create_assessment(payload: AssessmentCreate, db: Session = Depends(get_db)):
     principal = current_principal(db)
-    row = AssessmentRow(**payload.model_dump(mode="json"), organization_id=principal.organization_id)
+    row = AssessmentRow(
+        **payload.model_dump(mode="json"), organization_id=principal.organization_id
+    )
     if row.minimum_net_value_per_period is not None:
         row.minimum_net_value_per_period = str(row.minimum_net_value_per_period)
     db.add(row)
@@ -177,7 +273,9 @@ def list_assessments(db: Session = Depends(get_db), limit: int = Query(default=5
     scope = [AssessmentRow.status != "deleted"]
     if not principal.demo:
         scope.append(AssessmentRow.organization_id == principal.organization_id)
-    rows = db.scalars(select(AssessmentRow).where(*scope).order_by(AssessmentRow.created_at.desc()).limit(limit)).all()
+    rows = db.scalars(
+        select(AssessmentRow).where(*scope).order_by(AssessmentRow.created_at.desc()).limit(limit)
+    ).all()
     return [summary(row) for row in rows]
 
 
@@ -201,7 +299,11 @@ def update_assessment(assessment_id: str, payload: AssessmentPatch, db: Session 
 
 
 @router.delete("/assessments/{assessment_id}", status_code=204)
-def delete_assessment(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+def delete_assessment(
+    assessment_id: str,
+    x_reviewer_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     if current_principal(db).demo:
         require_reviewer_or_local_demo(db, x_reviewer_token)
     else:
@@ -213,12 +315,22 @@ def delete_assessment(assessment_id: str, x_reviewer_token: str | None = Header(
     db.commit()
 
 
-@router.post("/assessments/{assessment_id}/answers", response_model=AssessmentDetail, status_code=201)
+@router.post(
+    "/assessments/{assessment_id}/answers", response_model=AssessmentDetail, status_code=201
+)
 def submit_answer(assessment_id: str, payload: Answer, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
     change_inputs(row)
-    db.add(AnswerRow(assessment_id=row.id, key=payload.key, value={"value": payload.value},
-                     kind=payload.kind.value, source=payload.source, confidence=payload.confidence))
+    db.add(
+        AnswerRow(
+            assessment_id=row.id,
+            key=payload.key,
+            value={"value": payload.value},
+            kind=payload.kind.value,
+            source=payload.source,
+            confidence=payload.confidence,
+        )
+    )
     audit(db, row, "answer.recorded", key=payload.key, kind=payload.kind.value)
     db.commit()
     return detail(row)
@@ -228,11 +340,22 @@ def submit_answer(assessment_id: str, payload: Answer, db: Session = Depends(get
 @router.get("/assessments/{assessment_id}/missing-information", response_model=DiscoveryResult)
 def assessment_discovery(assessment_id: str, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
-    answers = [Answer(key=a.key, value=a.value.get("value"), kind=a.kind, source=a.source, confidence=a.confidence) for a in row.answers]
+    answers = [
+        Answer(
+            key=a.key,
+            value=a.value.get("value"),
+            kind=a.kind,
+            source=a.source,
+            confidence=a.confidence,
+        )
+        for a in row.answers
+    ]
     return summarize_discovery(answers)
 
 
-@router.post("/assessments/{assessment_id}/workflows", response_model=StoredWorkflow, status_code=201)
+@router.post(
+    "/assessments/{assessment_id}/workflows", response_model=StoredWorkflow, status_code=201
+)
 def add_workflow(assessment_id: str, payload: WorkflowCreate, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
     change_inputs(row)
@@ -284,7 +407,11 @@ def update_step(step_id: str, payload: StepPatch, db: Session = Depends(get_db))
     assessment = parent_for_step(db, step)
     check_mutable(assessment)
     if payload.model_fields_set:
-        if payload.order is not None and payload.order != step.position and any(s.position == payload.order for s in step.workflow.steps):
+        if (
+            payload.order is not None
+            and payload.order != step.position
+            and any(s.position == payload.order for s in step.workflow.steps)
+        ):
             raise HTTPException(status_code=409, detail="Step order already used in this workflow")
         apply_patch(step, payload, {"order": "position"})
         change_inputs(assessment)
@@ -324,7 +451,9 @@ def update_task(task_id: str, payload: TaskPatch, db: Session = Depends(get_db))
     if payload.model_fields_set:
         apply_patch(task, payload)
         change_inputs(assessment)
-        audit(db, assessment, "task.updated", task_id=task.id, fields=sorted(payload.model_fields_set))
+        audit(
+            db, assessment, "task.updated", task_id=task.id, fields=sorted(payload.model_fields_set)
+        )
         db.commit()
     return task_out(task)
 
@@ -353,26 +482,52 @@ def analyze_assessment(assessment_id: str, db: Session = Depends(get_db)):
     for workflow in row.workflows:
         for step in workflow.steps:
             if not step.tasks:
-                raise HTTPException(status_code=409, detail="Each workflow step needs at least one task before analysis")
-            steps.append(WorkflowStep(id=step.id, name=step.name, order=step.position,
-                                      owner=step.owner, system=step.system,
-                                      input_description=step.input_description,
-                                      output_description=step.output_description,
-                                      tasks=[Task(id=t.id, title=t.title, description=t.description,
-                                                  decision_type=t.decision_type, signals=t.signals,
-                                                  actions=t.actions, risks=t.risks) for t in step.tasks]))
+                raise HTTPException(
+                    status_code=409,
+                    detail="Each workflow step needs at least one task before analysis",
+                )
+            steps.append(
+                WorkflowStep(
+                    id=step.id,
+                    name=step.name,
+                    order=step.position,
+                    owner=step.owner,
+                    system=step.system,
+                    input_description=step.input_description,
+                    output_description=step.output_description,
+                    tasks=[
+                        Task(
+                            id=t.id,
+                            title=t.title,
+                            description=t.description,
+                            decision_type=t.decision_type,
+                            signals=t.signals,
+                            actions=t.actions,
+                            risks=t.risks,
+                        )
+                        for t in step.tasks
+                    ],
+                )
+            )
     if not steps:
         raise HTTPException(status_code=409, detail="Add workflow steps and tasks before analysis")
     # Different workflows can reuse ordinal positions; actual task identifiers remain UUID unique.
     steps = [s.model_copy(update={"order": index}) for index, s in enumerate(steps)]
-    payload = AssessmentPreviewRequest(title=row.title, steps=steps,
-                                       value_inputs=row.value_inputs,
-                                       minimum_net_value_per_period=Decimal(row.minimum_net_value_per_period) if row.minimum_net_value_per_period else None)
+    payload = AssessmentPreviewRequest(
+        title=row.title,
+        steps=steps,
+        value_inputs=row.value_inputs,
+        minimum_net_value_per_period=Decimal(row.minimum_net_value_per_period)
+        if row.minimum_net_value_per_period
+        else None,
+    )
     result = analyze(payload)
     row.analysis_snapshot = result.model_dump(mode="json")
     row.analysis_revision = row.revision
     row.status = "analyzed"
-    audit(db, row, "assessment.analyzed", revision=row.revision, policy_version=result.policy_version)
+    audit(
+        db, row, "assessment.analyzed", revision=row.revision, policy_version=result.policy_version
+    )
     db.commit()
     return result
 
@@ -381,19 +536,40 @@ def analyze_assessment(assessment_id: str, db: Session = Depends(get_db)):
 def scores(assessment_id: str, db: Session = Depends(get_db)):
     assessment = get_or_404(db, AssessmentRow, assessment_id)
     snapshot = require_analysis(assessment)
-    return {"revision": assessment.revision, "tasks": [{"task_id": t["task_id"], "ai_suitability": t["ai_suitability"], "technical_feasibility": t["technical_feasibility"], "data_readiness": t["data_readiness"]} for t in snapshot["tasks"]]}
+    return {
+        "revision": assessment.revision,
+        "tasks": [
+            {
+                "task_id": t["task_id"],
+                "ai_suitability": t["ai_suitability"],
+                "technical_feasibility": t["technical_feasibility"],
+                "data_readiness": t["data_readiness"],
+            }
+            for t in snapshot["tasks"]
+        ],
+    }
 
 
 @router.get("/assessments/{assessment_id}/risks")
 def risks(assessment_id: str, db: Session = Depends(get_db)):
     snapshot = require_analysis(get_or_404(db, AssessmentRow, assessment_id))
-    return {"tasks": [{"task_id": t["task_id"], "risks": t["risks"], "rule_hits": t["rule_hits"]} for t in snapshot["tasks"]]}
+    return {
+        "tasks": [
+            {"task_id": t["task_id"], "risks": t["risks"], "rule_hits": t["rule_hits"]}
+            for t in snapshot["tasks"]
+        ]
+    }
 
 
 @router.get("/assessments/{assessment_id}/recommendations")
 def recommendations(assessment_id: str, db: Session = Depends(get_db)):
     snapshot = require_analysis(get_or_404(db, AssessmentRow, assessment_id))
-    return {"tasks": [{"task_id": t["task_id"], "recommendation": t["recommendation"]} for t in snapshot["tasks"]]}
+    return {
+        "tasks": [
+            {"task_id": t["task_id"], "recommendation": t["recommendation"]}
+            for t in snapshot["tasks"]
+        ]
+    }
 
 
 def require_assigned_reviewer(db: Session, assessment: AssessmentRow) -> None:
@@ -401,14 +577,20 @@ def require_assigned_reviewer(db: Session, assessment: AssessmentRow) -> None:
     principal = current_principal(db)
     if principal.demo or principal.role == "admin":
         return
-    assignment = db.scalar(select(ReviewerAssignmentRow).where(
-        ReviewerAssignmentRow.assessment_id == assessment.id,
-    ))
+    assignment = db.scalar(
+        select(ReviewerAssignmentRow).where(
+            ReviewerAssignmentRow.assessment_id == assessment.id,
+        )
+    )
     if assignment is not None and assignment.reviewer_subject != principal.subject:
-        raise HTTPException(status_code=403, detail="Only the assigned reviewer may review or finalize")
+        raise HTTPException(
+            status_code=403, detail="Only the assigned reviewer may review or finalize"
+        )
 
 
-@router.post("/assessments/{assessment_id}/fde-review", response_model=StoredReview, status_code=201)
+@router.post(
+    "/assessments/{assessment_id}/fde-review", response_model=StoredReview, status_code=201
+)
 def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depends(get_db)):
     if not current_principal(db).demo:
         require_role(db, "reviewer")
@@ -419,45 +601,96 @@ def record_review(assessment_id: str, payload: ReviewRequest, db: Session = Depe
     if not principal.demo and payload.reviewer_id != principal.subject:
         raise HTTPException(status_code=403, detail="Reviewer label must match credential subject")
     require_assigned_reviewer(db, row)
-    review = ReviewRow(assessment_id=row.id, analysis_revision=row.revision,
-                       identity_verified=not principal.demo, **payload.model_dump(mode="json"))
+    review = ReviewRow(
+        assessment_id=row.id,
+        analysis_revision=row.revision,
+        identity_verified=not principal.demo,
+        **payload.model_dump(mode="json"),
+    )
     db.add(review)
     db.flush()
     row.status = "in_review"
-    audit(db, row, "fde.review_recorded", actor=payload.reviewer_id, review_id=review.id, identity_unverified=principal.demo)
+    audit(
+        db,
+        row,
+        "fde.review_recorded",
+        actor=payload.reviewer_id,
+        review_id=review.id,
+        identity_unverified=principal.demo,
+    )
     db.commit()
-    return StoredReview.model_validate({"id": review.id, **payload.model_dump(), "analysis_revision": review.analysis_revision,
-                                        "is_final": False, "created_at": review.created_at,
-                                        "identity_unverified": principal.demo})
+    return StoredReview.model_validate(
+        {
+            "id": review.id,
+            **payload.model_dump(),
+            "analysis_revision": review.analysis_revision,
+            "is_final": False,
+            "created_at": review.created_at,
+            "identity_unverified": principal.demo,
+        }
+    )
 
 
 @router.post("/assessments/{assessment_id}/final-decision", response_model=StoredReview)
-def final_decision(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+def final_decision(
+    assessment_id: str,
+    x_reviewer_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     principal = require_reviewer_or_local_demo(db, x_reviewer_token)
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     require_analysis(row)
     require_assigned_reviewer(db, row)
-    review = next((r for r in reversed(row.reviews) if r.analysis_revision == row.revision and not r.is_final), None)
+    review = next(
+        (
+            r
+            for r in reversed(row.reviews)
+            if r.analysis_revision == row.revision and not r.is_final
+        ),
+        None,
+    )
     if review is None:
         raise HTTPException(status_code=409, detail="Record an FDE review first")
     if not principal.demo and principal.role != "admin" and review.reviewer_id != principal.subject:
-        raise HTTPException(status_code=403, detail="Only the reviewing FDE or organization admin can finalize")
-    if not principal.demo and (os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower() == "pilot" or os.getenv("ADVISORY_REQUIRE_APPROVAL_CHAIN") == "1"):
+        raise HTTPException(
+            status_code=403, detail="Only the reviewing FDE or organization admin can finalize"
+        )
+    if not principal.demo and (
+        os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower() == "pilot"
+        or os.getenv("ADVISORY_REQUIRE_APPROVAL_CHAIN") == "1"
+    ):
         require_completed_approvals(db, row)
     review.is_final = True
     row.status = "finalized"
-    audit(db, row, "fde.finalized", actor=review.reviewer_id, review_id=review.id, identity_unverified=principal.demo)
+    audit(
+        db,
+        row,
+        "fde.finalized",
+        actor=review.reviewer_id,
+        review_id=review.id,
+        identity_unverified=principal.demo,
+    )
     db.commit()
-    return StoredReview(id=review.id, reviewer_id=review.reviewer_id,
-                        selected_category=review.selected_category, rationale=review.rationale,
-                        override_reason=review.override_reason, analysis_revision=review.analysis_revision,
-                        is_final=True, created_at=review.created_at,
-                        identity_unverified=not review.identity_verified)
+    return StoredReview(
+        id=review.id,
+        reviewer_id=review.reviewer_id,
+        selected_category=review.selected_category,
+        rationale=review.rationale,
+        override_reason=review.override_reason,
+        analysis_revision=review.analysis_revision,
+        is_final=True,
+        created_at=review.created_at,
+        identity_unverified=not review.identity_verified,
+    )
 
 
 @router.post("/assessments/{assessment_id}/reopen", response_model=AssessmentDetail)
-def reopen_assessment(assessment_id: str, x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db)):
+def reopen_assessment(
+    assessment_id: str,
+    x_reviewer_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
     require_reviewer_or_local_demo(db, x_reviewer_token)
     row = get_or_404(db, AssessmentRow, assessment_id)
     if row.status != "finalized":
@@ -479,5 +712,13 @@ def change_reopen(row: AssessmentRow) -> None:
 @router.get("/assessments/{assessment_id}/audit", response_model=list[AuditEntry])
 def audit_history(assessment_id: str, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
-    return [AuditEntry(id=a.id, event_type=a.event_type, actor=a.actor,
-                       details=a.details, created_at=a.created_at) for a in row.audit_events]
+    return [
+        AuditEntry(
+            id=a.id,
+            event_type=a.event_type,
+            actor=a.actor,
+            details=a.details,
+            created_at=a.created_at,
+        )
+        for a in row.audit_events
+    ]

@@ -1,4 +1,5 @@
 """Safe request logging: never include tokens, bodies, query strings, or response data."""
+
 import json
 import logging
 import time
@@ -23,8 +24,16 @@ async def instrument_request(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     route = request.scope.get("route")
     template = getattr(route, "path", "unknown")
-    logger.info(json.dumps({"event": "http.request", "request_id": identifier,
-                            "method": request.method, "route": template,
-                            "status": response.status_code,
-                            "duration_ms": round((time.perf_counter()-started)*1000, 1)}))
+    logger.info(
+        json.dumps(
+            {
+                "event": "http.request",
+                "request_id": identifier,
+                "method": request.method,
+                "route": template,
+                "status": response.status_code,
+                "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+            }
+        )
+    )
     return response

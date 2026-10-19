@@ -8,7 +8,12 @@ from app.domain.schemas import (
 from app.services.recommendation import recommend
 from app.services.risk import evaluate_risks
 from app.services.rule_engine import evaluate_rules
-from app.services.scoring import POLICY_VERSION, data_readiness, score_ai_suitability, technical_feasibility
+from app.services.scoring import (
+    POLICY_VERSION,
+    data_readiness,
+    score_ai_suitability,
+    technical_feasibility,
+)
 from app.services.value import calculate_value
 
 
@@ -39,6 +44,9 @@ def analyze(request: AssessmentPreviewRequest) -> AssessmentPreviewResponse:
     if any(a.ai_suitability.coverage < 1 for a in analyses):
         warnings.append("Some suitability signals are unknown; do not treat scores as confidence.")
     return AssessmentPreviewResponse(
-        title=request.title, policy_version=POLICY_VERSION, value=value, tasks=analyses,
+        title=request.title,
+        policy_version=POLICY_VERSION,
+        value=value,
+        tasks=analyses,
         warnings=warnings,
     )

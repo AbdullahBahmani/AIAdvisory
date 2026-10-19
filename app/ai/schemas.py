@@ -60,9 +60,15 @@ class RiskProposal(StrictModel):
 
 
 Pattern = Literal[
-    "traditional_workflow", "classification", "extraction", "rag_with_citations",
-    "ai_plus_deterministic_rules", "ai_plus_human_approval", "tool_using_agent",
-    "more_discovery", "no_project",
+    "traditional_workflow",
+    "classification",
+    "extraction",
+    "rag_with_citations",
+    "ai_plus_deterministic_rules",
+    "ai_plus_human_approval",
+    "tool_using_agent",
+    "more_discovery",
+    "no_project",
 ]
 
 
@@ -136,6 +142,7 @@ class AIRunRecord(StrictModel):
 
 class AcceptTaskSuggestions(StrictModel):
     """Explicit local reviewer action. This is never a production identity check."""
+
     selected_indices: list[int] = Field(min_length=1, max_length=12)
     reviewer_label: str = Field(min_length=1, max_length=200)
     rationale: str = Field(min_length=5, max_length=2000)

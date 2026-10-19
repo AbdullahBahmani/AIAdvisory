@@ -4,8 +4,8 @@ Revision ID: 0002_ai_runs
 Revises: 0001
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0002_ai_runs"
 down_revision = "0001"
@@ -17,7 +17,12 @@ def upgrade() -> None:
     op.create_table(
         "ai_runs",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("assessment_revision", sa.Integer, nullable=False),
         sa.Column("feature", sa.String(30), nullable=False),
         sa.Column("proposal", sa.JSON, nullable=False),

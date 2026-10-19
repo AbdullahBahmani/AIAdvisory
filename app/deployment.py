@@ -1,5 +1,7 @@
 """Fail-closed startup validation; production requires independent release approval."""
+
 import os
+
 from sqlalchemy.engine import make_url
 
 
@@ -21,4 +23,5 @@ def check_deployment_configuration() -> None:
         if database.query.get("sslmode") != "verify-full":
             raise RuntimeError("Pilot PostgreSQL connection requires sslmode=verify-full")
         from app.identity import _config
+
         _config()

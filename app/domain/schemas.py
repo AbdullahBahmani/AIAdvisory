@@ -1,7 +1,6 @@
 """Domain contracts. Unknown, zero and false are intentionally distinct."""
 
 from decimal import Decimal
-from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -18,8 +17,6 @@ from app.domain.enums import (
 
 class DomainModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
 
 
 class Organization(DomainModel):

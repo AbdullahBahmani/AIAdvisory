@@ -3,8 +3,9 @@
 Revision ID: 0008_portfolio
 Revises: 0007_collaboration
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0008_portfolio"
 down_revision = "0007_collaboration"
@@ -16,7 +17,12 @@ def upgrade():
     op.create_table(
         "opportunity_profiles",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("strategic_alignment", sa.Integer(), nullable=True),
         sa.Column("urgency", sa.Integer(), nullable=True),
         sa.Column("delivery_effort", sa.Integer(), nullable=True),
@@ -27,7 +33,12 @@ def upgrade():
     op.create_table(
         "opportunity_evidence",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("assessment_revision", sa.Integer(), nullable=False),
         sa.Column("kind", sa.String(30), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
@@ -37,11 +48,18 @@ def upgrade():
         sa.Column("verified_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
-    op.create_index("ix_opportunity_evidence_assessment_id", "opportunity_evidence", ["assessment_id"])
+    op.create_index(
+        "ix_opportunity_evidence_assessment_id", "opportunity_evidence", ["assessment_id"]
+    )
     op.create_table(
         "value_scenarios",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("assessment_revision", sa.Integer(), nullable=False),
         sa.Column("inputs", sa.JSON(), nullable=False),
         sa.Column("created_by", sa.String(200), nullable=False),
@@ -51,7 +69,12 @@ def upgrade():
     op.create_table(
         "poc_plans",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("assessment_revision", sa.Integer(), nullable=False),
         sa.Column("inputs", sa.JSON(), nullable=False),
         sa.Column("status", sa.String(24), nullable=False),
@@ -62,7 +85,12 @@ def upgrade():
     op.create_table(
         "poc_observations",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("poc_id", sa.String(36), sa.ForeignKey("poc_plans.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "poc_id",
+            sa.String(36),
+            sa.ForeignKey("poc_plans.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("actual", sa.String(50), nullable=False),
         sa.Column("source_reference", sa.String(300), nullable=False),
         sa.Column("created_by", sa.String(200), nullable=False),

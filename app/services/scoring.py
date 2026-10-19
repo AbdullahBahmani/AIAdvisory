@@ -46,7 +46,9 @@ def score_ai_suitability(signals: TaskSignals) -> ScoreResult:
         if signals.high_consequence and not signals.human_review_available:
             score -= 25
             factors.append(
-                ScoreFactor(signal="high_consequence_without_review", contribution=-25, observed=True)
+                ScoreFactor(
+                    signal="high_consequence_without_review", contribution=-25, observed=True
+                )
             )
     return ScoreResult(
         value=max(0, min(100, score)) if known else None,
@@ -62,7 +64,9 @@ def _completeness(signals: TaskSignals, fields: tuple[str, ...]) -> DimensionSco
     yes = [key for key in known if getattr(signals, key)]
     coverage = round(len(known) / len(fields), 4)
     # A partial rubric is a provisional score, not a claim of full knowledge.
-    status = "not_assessable" if not known else "complete" if len(known) == len(fields) else "partial"
+    status = (
+        "not_assessable" if not known else "complete" if len(known) == len(fields) else "partial"
+    )
     return DimensionScore(
         value=round(len(yes) / len(known) * 100) if known else None,
         coverage=coverage,
@@ -72,8 +76,13 @@ def _completeness(signals: TaskSignals, fields: tuple[str, ...]) -> DimensionSco
 
 
 def technical_feasibility(signals: TaskSignals) -> DimensionScore:
-    return _completeness(signals, ("api_available", "auth_ready", "sandbox_available", "integration_path"))
+    return _completeness(
+        signals, ("api_available", "auth_ready", "sandbox_available", "integration_path")
+    )
 
 
 def data_readiness(signals: TaskSignals) -> DimensionScore:
-    return _completeness(signals, ("data_available", "data_quality_adequate", "permission_to_use_data", "governance_ready"))
+    return _completeness(
+        signals,
+        ("data_available", "data_quality_adequate", "permission_to_use_data", "governance_ready"),
+    )
