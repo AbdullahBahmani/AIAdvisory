@@ -379,6 +379,31 @@ as verified.
 
 ### FAILED / still open (honest list)
 
+- **Canonical host port binding — now VERIFIED (2026-10-20).** The earlier run could not bind
+  `127.0.0.1:8000` / `127.0.0.1:8501` because another local process held them, so those
+  mappings were configuration-verified only. Re-run with the committed `compose.yaml` unchanged
+  and no port override:
+  - `docker compose build` → success; `docker compose up -d` → `aiadvisory-api-1` and
+    `aiadvisory-ui-1` both report **healthy**, published as `127.0.0.1:8000->8000/tcp` and
+    `127.0.0.1:8501->8501/tcp`.
+  - `GET /health` → 200, `GET /ready` → 200, `GET /openapi.json` → 200, Streamlit `/` → 200,
+    Streamlit `/_stcore/health` → 200 — all over the **canonical** ports.
+  - `python -m scripts.docker_smoke --base-url http://127.0.0.1:8000` → **PASS** across all
+    eleven assertions, including the analysis response carrying `policy_version: rules-v2`,
+    so the image runs the current policy and not a stale build.
+  - Container posture re-confirmed inside the running container: `uid=10001(appuser)`,
+    `CapEff: 0000000000000000` (all capabilities dropped), `NoNewPrivs: 1`, and **zero**
+    `ADVISORY_AI_API_KEY` / `ADVISORY_AI_ACCESS_TOKEN` variables present; the AI route answers
+    **503** with the rules-only mode still available.
+  - `docker compose down -v` afterwards removed the container, the named volume and the
+    network; no container or volume was left behind.
+
+- The canonical host ports `127.0.0.1:8000` / `127.0.0.1:8501` could not be
+  bound during the run because another local process held them; the HTTP
+  checks were made on `127.0.0.1:18000` / `127.0.0.1:18501` with the same
+  containers (see above). *(Superseded on 2026-10-20: the canonical binding
+  was verified separately with the committed `compose.yaml` and no port
+  override — see the entry at the top of the Docker section.)*
 - **`alembic check` drift — FOUND AND FIXED (2026-10-19, after this container
   run).** During this run `alembic check` FAILED inside the container with
   `Detected type change from FLOAT() to Double() on 'answers.confidence'`
@@ -396,7 +421,9 @@ as verified.
 - The canonical host ports `127.0.0.1:8000` / `127.0.0.1:8501` could not be
   bound during the run because another local process held them; the HTTP
   checks were made on `127.0.0.1:18000` / `127.0.0.1:18501` with the same
-  containers (see above).
+  containers (see above). *(Superseded on 2026-10-20: the canonical binding
+  was verified separately with the committed `compose.yaml` and no port
+  override — see the entry at the top of the Docker section.)*
 - **Not verified**: interactive browser use of the Streamlit UI (screenshots
   and login/review/export as a real user are still open in P4-07);
   PostgreSQL in the container; image vulnerability scanning/SBOM/signing;
