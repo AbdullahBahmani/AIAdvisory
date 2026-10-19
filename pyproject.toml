@@ -40,3 +40,13 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's Depends()/Query()/Body() in argument defaults is the framework's
+# documented idiom; B008 flags it but rewriting it would break dependency injection.
+"app/api/*.py" = ["B008"]
+"app/main.py" = ["B008"]
+"app/security.py" = ["B008"]
+# Pytest fixture parameters intentionally shadow module-level imports
+# (e.g. `client`); F811 is a false positive here.
+"tests/*.py" = ["F811"]
