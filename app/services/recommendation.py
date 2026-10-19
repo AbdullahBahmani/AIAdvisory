@@ -82,7 +82,13 @@ def recommend(
             "AI can interpret language; deterministic integrations must retrieve facts."
         )
     elif (
-        s.data_available is True
+        (
+            s.unstructured_content
+            or s.classification_or_extraction
+            or s.semantic_search
+            or s.natural_language_generation
+        )
+        and s.data_available is True
         and score.value is not None
         and score.value >= 65
         and (s.output_verifiable is True or s.human_review_available is True)

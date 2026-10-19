@@ -247,14 +247,61 @@ def test_every_case_stays_advisory_only(corpus):
 
 
 # --------------------------------------------------------------------------- known discrepancy
-def test_known_discrepancy_is_reported_and_documented(corpus):
+def test_no_known_discrepancies_remain_open(corpus):
+    """Every documented engine finding must stay visible until it is genuinely fixed."""
     known = corpus["known_discrepancies"]
-    assert known, "the documented engine finding must stay visible"
-    for discrepancy in known:
-        assert discrepancy["expected"] != discrepancy["actual"][0]
-        assert discrepancy["note"]
-        assert discrepancy["id"] in DOCS.read_text(encoding="utf-8")
+    assert known == [], f"open engine discrepancies: {known}"
     assert corpus["failed"] == 0
+
+
+def test_resolved_lookup_discrepancy_now_strictly_enforced(corpus):
+    """The pure-lookup case must fail hard if the language-signal gate regresses."""
+    case = next(case for case in corpus["cases"] if case["id"] == "authoritative-lookup-only")
+    assert case["expected"] == "more_discovery"
+    assert case["actual"] == ["more_discovery"]
+    assert case["known_discrepancy"] is False, "the exemption was removed once fixed"
+    assert case["history_note"], "the resolution must stay recorded in the dataset"
+    assert case["id"] in DOCS.read_text(encoding="utf-8")
+
+
+def test_strong_ai_requires_an_observed_language_signal():
+    """A high suitability score alone must never make a task an AI candidate.
+
+    Policy rules-v2 requires a language-oriented signal in addition to the score
+    threshold. Without it, a plain system-of-record integration scored 75 and was
+    recommended as a strong AI candidate.
+    """
+    from app.domain.schemas import AssessmentPreviewRequest
+    from app.services.assessment import analyze
+
+    scenario = {
+        "title": "Lookup-only task",
+        "steps": [
+            {
+                "id": "s1",
+                "name": "Synthetic workflow step",
+                "order": 1,
+                "tasks": [
+                    {
+                        "id": "t1",
+                        "title": "Retrieve the authoritative customer record",
+                        "description": "Synthetic regression fixture.",
+                        "signals": {
+                            "requires_authoritative_lookup": True,
+                            "data_available": True,
+                            "output_verifiable": True,
+                            "api_available": True,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    response = analyze(AssessmentPreviewRequest.model_validate(scenario))
+    assert response.tasks
+    for task in response.tasks:
+        assert task.recommendation.category.value != "strong_ai_candidate"
+        assert task.recommendation.category.value == "more_discovery"
 
 
 # --------------------------------------------------------------------------- contradiction path

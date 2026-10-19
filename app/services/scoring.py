@@ -2,7 +2,7 @@
 
 from app.domain.schemas import DimensionScore, ScoreFactor, ScoreResult, TaskSignals
 
-POLICY_VERSION = "rules-v1"
+POLICY_VERSION = "rules-v2"
 
 # Blueprint weights are advisory, not calibrated probabilities. Only observed
 # signals contribute. A None means 'unknown' rather than false.

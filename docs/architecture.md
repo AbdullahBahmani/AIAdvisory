@@ -12,7 +12,7 @@ Local browser (synthetic data only)
               │    ├─ answers with source/kind/confidence
               │    ├─ reviews and audit_events
               │    └─ revision-stamped immutable JSON analysis snapshots
-              └─ Pure deterministic assessment engine (rules-v1)
+              └─ Pure deterministic assessment engine (rules-v2)
                    ├─ suitability scores and factor coverage
                    ├─ data/technical-readiness rubrics
                    ├─ risks and hard policy gates

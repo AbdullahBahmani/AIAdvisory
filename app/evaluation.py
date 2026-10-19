@@ -275,6 +275,7 @@ def _evaluate_case(item: dict) -> dict:
         "status": status,
         "known_discrepancy": known,
         "discrepancy_note": item.get("discrepancy_note"),
+        "history_note": item.get("history_note"),
         "provenance": item.get("provenance"),
     }
 
@@ -477,6 +478,7 @@ def evaluate_dataset(path: Path = DEFAULT_DATASET, scope: str = "full") -> dict:
         "failed": len(unexpected_failures),
         "unexpected_failures": [r["id"] for r in unexpected_failures],
         "known_discrepancy_count": len(known_discrepancies),
+        "known_discrepancy_resolved_count": len(resolved),
         "known_discrepancies": [
             {
                 "id": r["id"],
@@ -503,8 +505,9 @@ def evaluate_dataset(path: Path = DEFAULT_DATASET, scope: str = "full") -> dict:
         },
         "cases": results,
         "note": (
-            "scope='core' evaluates the four original contrastive fixtures only; use "
-            "scope='full' (or evaluate_corpus()) for the whole synthetic corpus."
+            "scope='full' (the default) evaluates every case in this file; "
+            "scope='core' evaluates only the four original contrastive fixtures and "
+            "must be requested explicitly."
         ),
         "warning": (
             "Synthetic golden expectations only: not field accuracy, not model quality, not "
@@ -528,7 +531,8 @@ def _format_summary(result: dict) -> str:
         f"dataset_version: {result['dataset_version']}   scope: {result['scope']}   "
         f"cases: {result['total']}",
         f"passed: {result['passed']}   unexpected failures: {result['failed']}   "
-        f"known discrepancies: {result['known_discrepancy_count']}",
+        f"known discrepancies: {result['known_discrepancy_count']}   "
+        f"resolved since last run: {result.get('known_discrepancy_resolved_count', 0)}",
         "",
         "FALSE POSITIVE AI RECOMMENDATIONS (safety-relevant regression guard):",
         f"  {false_positive['false_positives']} of {false_positive['non_ai_cases']} "

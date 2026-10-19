@@ -1,5 +1,5 @@
 {
-  "dataset_version": "5.0",
+  "dataset_version": "5.1",
   "description": "Synthetic hand-authored contrastive assessments. These are golden policy expectations for regression detection only: not a representative sample, not field accuracy, not model quality, not evidence of ROI, and not a safety assurance.",
   "provenance": "Every case is invented for this repository. No customer data, no production logs, no external benchmark, no model outputs. Expected categories were written from the published policy precedence and then confirmed against the deterministic engine.",
   "core_case_ids": [
@@ -8,7 +8,7 @@
     "hybrid-refund",
     "privacy-blocked"
   ],
-  "core_case_note": "The four original contrastive fixtures are kept as a small core regression set. scope='core' evaluates only these; scope='full' (the CLI default) evaluates every case in this file.",
+  "core_case_note": "The four original contrastive fixtures are kept as a small core regression set. scope='core' evaluates only these and must be requested explicitly; scope='full' is the default and evaluates every case in this file.",
   "cases": [
     {
       "id": "ai-support",
@@ -1097,7 +1097,7 @@
     },
     {
       "id": "authoritative-lookup-only",
-      "invariant": "A pure lookup is not an AI candidate (known discrepancy)",
+      "invariant": "A pure lookup is not an AI candidate",
       "provenance": "Synthetic: hand-authored. Rationale: an authoritative lookup with no language work at all is an integration, not an AI candidate; more discovery is required.",
       "scenario": {
         "title": "Look up the current account tier",
@@ -1136,8 +1136,7 @@
       "expected_rule_ids": [
         "DATA-001"
       ],
-      "known_discrepancy": true,
-      "discrepancy_note": "KNOWN DISCREPANCY (documented engine finding, engine not modified): the STRONG_AI branch is reached by an aggregate suitability score >= 65 without requiring any language-oriented signal, although its own rationale says 'observed language-oriented signals'. A pure system-of-record lookup therefore lands in strong_ai_candidate, while the least-wrong category for a task with no interpretation work is more_discovery. Recorded as a false positive in the safety metric."
+      "history_note": "This case was a documented engine discrepancy and is now resolved. The STRONG_AI branch was reachable on an aggregate suitability score >= 65 alone, without any language-oriented signal, even though its own rationale claimed 'observed language-oriented signals'. Policy rules-v2 requires at least one language-oriented signal (unstructured_content, classification_or_extraction, semantic_search or natural_language_generation) in addition to the score threshold, so the exemption was removed and this case now strictly enforces more_discovery. main-planner.md section 5.2 already required that a recommendation is never derived solely from one numeric score."
     },
     {
       "id": "strong-ai-semantic-search",

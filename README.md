@@ -57,7 +57,7 @@ Enter that same secret in the review tab's password field when finalizing or reo
 1. Create or resume an assessment and edit problem, owner, and optional numerical baselines.
 2. Answer the next discovery question with an evidence kind, source, and confidence; missing information and contradictions remain visible.
 3. Create one or more workflows, add ordered steps and at least one atomic task per step; save JSON suitability signals, business actions, and optional risks.
-4. Analyze saved workflows. Results use the same deterministic `rules-v1` engine as the Phase 1 preview, including explicit policy hits and missing evidence warnings.
+4. Analyze saved workflows. Results use the same deterministic `rules-v2` engine as the Phase 1 preview, including explicit policy hits and missing evidence warnings.
 5. Record a review with rationale and an override reason whenever departing from proposed categories. If the local reviewer token is configured, finalize the **demo assessment**. Finalized assessments are read-only until explicitly reopened.
 6. Open **7 · Reports** to download Markdown/HTML describing each task, deterministic score, source, missing evidence, controls, optional AI suggestions, and the provisional FDE decision. Editing input invalidates the export until analysis is refreshed.
 

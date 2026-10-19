@@ -16,7 +16,7 @@ def test_cases_return_distinct_per_task_verdicts():
         body = response.json()
         assert body["advisory_only"] is True
         assert body["tasks"][0]["recommendation"]["category"] == category
-        assert body["policy_version"] == "rules-v1"
+        assert body["policy_version"] == "rules-v2"
 
 
 def test_rejects_malformed_workflow():

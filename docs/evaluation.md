@@ -67,7 +67,7 @@ its expected category, the rule ids it expects to fire, and whether ROI must sta
 | `contradictory-data-claims` | Triage records with conflicting data statements | `more_discovery` | EVID-003 | Contradictory data claims need discovery first |
 | `hybrid-authoritative-lookup` | Draft a policy answer with system-of-record facts | `hybrid` | DATA-001 | Language plus authoritative facts is hybrid |
 | `hybrid-contract-review` | Compare a signed contract against the standard template | `hybrid` | DATA-001 | Clause extraction with retrieval is hybrid |
-| `authoritative-lookup-only` | Look up the current account tier | `more_discovery` | DATA-001 | A pure lookup is not an AI candidate — **known discrepancy**, see below |
+| `authoritative-lookup-only` | Look up the current account tier | `more_discovery` | DATA-001 | A pure lookup is not an AI candidate — was a known discrepancy, **fixed in `rules-v2`**, see below |
 | `strong-ai-semantic-search` | Answer agent questions from the knowledge base | `strong_ai_candidate` | — | Semantic retrieval with verification is a PoC |
 | `strong-ai-email-triage` | Route inbound supplier email | `strong_ai_candidate` | — | High-volume triage with verification is a PoC |
 | `missing-baseline-roi` | Inbound request triage | `strong_ai_candidate` | — | Bounded AI case, but ROI must stay unavailable |
@@ -133,28 +133,41 @@ the ROI stays unavailable because the baseline was never observed. `value-below-
 other direction: with a complete baseline the ROI *is* computed, and the case still ends
 `human_led` because the evidenced value is under the threshold.
 
-## Known discrepancy (documented engine finding, engine not modified)
+## Resolved discrepancy — `strong_ai_candidate` now requires a language signal
 
-`authoritative-lookup-only` expects `more_discovery`; the engine returns `strong_ai_candidate`.
+`authoritative-lookup-only` expects `more_discovery`; before policy `rules-v2` the engine
+returned `strong_ai_candidate`.
 
 * **Scenario:** a pure system-of-record lookup with no interpretation work at all.
 * **Why the expectation is `more_discovery`:** the `strong_ai_candidate` branch's own rationale
-  says "observed language-oriented signals", but the branch is actually reached by an aggregate
-  suitability score ≥ 65. Data, API availability and verifiability alone score 75, so a task with
-  no language signal is classified as a strong AI candidate. For a task with no interpretation
-  work, the honest category is `more_discovery` (or a deterministic integration), not an AI
-  project.
-* **What was done:** nothing to the engine. The case is flagged `known_discrepancy` in
-  `evals/golden_cases.json` with this note, it is reported by the runner under
-  `known_discrepancies`, it is counted as the single false positive in the safety metric, and
-  `tests/test_evaluation_metrics.py` asserts that it stays visible and documented. It is
-  excluded from the pass/fail gate only because it is a *known, recorded* divergence, not a
-  regression: any **new** false positive still fails the run.
+  says "observed language-oriented signals", but the branch was actually reached by an aggregate
+  suitability score ≥ 65 alone. Data, API availability and verifiability alone score 75 (the score
+  starts from a base of 50 and adds observed signals), so a task with no language signal at all
+  was classified as a strong AI candidate. For a task with no interpretation work, the honest
+  category is `more_discovery` (or a deterministic integration), not an AI project. This is
+  exactly the failure mode `main-planner.md` §5.2 forbids: a recommendation must never be
+  derived **solely** from one numeric score.
+* **Fix (policy `rules-v2`):** the `strong_ai_candidate` branch now additionally requires at
+  least one observed language-oriented signal — `unstructured_content`,
+  `classification_or_extraction`, `semantic_search` or `natural_language_generation` — on top of
+  the score threshold and the review path. The `hybrid` branch already required such a signal.
+  The change is strictly more conservative: it can only move a verdict *away* from "build an AI
+  project", never towards it.
+* **Effect on the corpus:** the case now passes on its own expectation, the exemption was removed
+  from `evals/golden_cases.json` (the resolution is recorded in the case's `history_note`), and
+  the false-positive rate over the 20 non-AI cases fell from **1 of 20 (0.05) to 0 of 20 (0.0)**.
+  Every category now scores 100% on the corpus. Because the exemption is gone, the case is
+  strictly enforced again: a regression would fail the run rather than be absorbed as a known
+  discrepancy.
+* **What was deliberately NOT changed:** the scoring weights and the base-50 scoring model are
+  untouched, because the score itself is a published, explainable artefact with per-factor
+  contributions and changing it would alter every reported suitability figure. The fix is in the
+  *decision*, not the *measurement*.
 
 ## Scope of this evaluation
 
 These checks are **golden policy expectations**, not a representative sample and not empirical
-model accuracy. A result of `30/31` (one documented known discrepancy) means only that the curated
+model accuracy. A result of `31/31` means only that the curated
 fixtures still match the expected deterministic categories on this software version. There are no
 real customer datasets, live model calls, latency measurements, user interviews, business
 outcomes, or rollout authorization. The cases cover the gaps that were previously named —
