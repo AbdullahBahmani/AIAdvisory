@@ -18,7 +18,12 @@ The [implementation planner](main-planner.md) tracks completed checks and remain
 
 Use Python **3.12+**. The repository intentionally contains no GitHub Actions workflow or hosted-runner dependency.
 
+A committed `uv.lock` pins the exact dependency set resolved against Python 3.12. Use it when
+available:
+
 ```bash
+uv sync --extra dev --extra postgres     # reproducible install from uv.lock
+# or, without uv:
 python3 -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python -m pip install -e '.[dev]'
@@ -95,16 +100,25 @@ See OpenAPI for exact request schemas and validation errors. The rules-only endp
 
 ```bash
 python -m pytest -q
-python -m compileall -q app ui tests migrations
+python -m compileall -q app ui scripts tests migrations
 python -m alembic check    # after `upgrade head` on your chosen DB
-# Optional if installed locally:
 ruff check .
 ruff format --check .
 ```
 
-The test suite uses isolated SQLite database files and offline FastAPI TestClient calls. It covers creation, reload, updates, discovery, task scoring, three golden AI/non-AI/hybrid fixtures, stale-result handling, finalization gates, and soft deletion. The migration was applied and `alembic check` reported no model/schema drift in the implementation environment.
+The test suite uses isolated SQLite database files and offline FastAPI TestClient calls. It covers creation, reload, updates, discovery, task scoring, three golden AI/non-AI/hybrid fixtures, stale-result handling, finalization gates, and soft deletion.
 
-**Open verification gates:** Python 3.12 lock file not yet committed; Ruff and a live Streamlit browser smoke test not verified in the available environment (Streamlit is not installed there). Python 3.13 local unit/API tests and migration checks passed. Local-only test runs replace hosted CI; **do not enable GitHub Actions runners**.
+**Verified locally on Python 3.12 (2026-10-19):** `uv lock` resolves the full dependency set;
+`uv sync` installs it; `pytest` reports **126 passed, 0 failed**; `ruff check` and
+`ruff format --check` are **clean repo-wide**; `alembic upgrade head` on a fresh database plus
+`alembic check` reports **no schema drift**; `python -m app.evaluation` passes its golden
+expectations; and `python -m scripts.demo` exports six Markdown/HTML reports for the three
+demo scenarios. `tests/test_alembic_drift.py` rebuilds the schema from the migration chain and
+fails if the models and migrations ever drift apart again.
+
+**Still open:** a live Streamlit browser smoke test, a real Docker boot, PostgreSQL migration
+and restore drills, and every external production gate below. Local-only test runs replace
+hosted CI; **do not enable GitHub Actions runners**.
 
 ## Design and security
 
