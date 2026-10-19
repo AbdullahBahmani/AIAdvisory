@@ -110,3 +110,69 @@ behaviour and backup retention rather than assuming cascading erasure
 satisfies GDPR. The public `/ready` check now expects migration
 `0008_portfolio`. No new external provider/agent or business execution
 permissions are introduced.
+
+
+## Local Docker/Compose deployment (verified 2026-10-19)
+
+This is the **local synthetic demo** deployment only. It is not a pilot and
+not a production deployment: Compose publishes both host ports on
+`127.0.0.1` only, keeps the AI provider switched off, and enables the
+explicit local demo authentication switch. The production startup guard is
+untouched — `ADVISORY_DEPLOYMENT_MODE=production` still refuses to boot
+(verified in `docs/release-verification.md`).
+
+```bash
+docker compose build          # single shared image aiadvisory-local:0.8.0
+docker compose up -d          # api on 127.0.0.1:8000, ui on 127.0.0.1:8501
+docker compose ps             # wait for both services to report (healthy)
+curl -sS http://127.0.0.1:8000/health
+curl -sS http://127.0.0.1:8000/ready
+curl -sS http://127.0.0.1:8000/openapi.json >/dev/null
+uv run --no-sync python -m scripts.docker_smoke --base-url http://127.0.0.1:8000
+docker compose down -v        # stop and delete the SQLite volume
+```
+
+Operator notes:
+
+- **Migrations run at container start.** The API command is
+  `alembic upgrade head && exec uvicorn app.main:app ...`, so a fresh volume
+  is migrated from revision `0001` to `0008_portfolio` before the API
+  serves traffic. `/ready` only returns `200` when the database is at
+  `0008_portfolio`; the Compose healthcheck uses `/ready`, so a container
+  that failed to migrate never becomes healthy and the UI never starts.
+- **The SQLite database lives in the named volume** `app-data` mounted at
+  `/data` (`DATABASE_URL=sqlite:////data/aiadvisory.sqlite3`). `docker
+  compose down` keeps it; `docker compose down -v` deletes it. Back it up
+  with `docker compose exec api python -m scripts.maintenance backup-sqlite
+  --output /data/backup.sqlite3` before discarding a volume.
+- **No secret is stored in the image or in `compose.yaml`.** If you want to
+  use the local reviewer/finalize flow, export your own token before
+  `up`; it is passed through to the API container and never committed:
+  `export ADVISORY_REVIEW_TOKEN="$(openssl rand -hex 16)"` (at least 16
+  characters). Without it the reviewer endpoints return HTTP 403.
+- **AI stays off.** `ADVISORY_AI_ENABLED=0` is hard-coded in `compose.yaml`
+  and no `ADVISORY_AI_API_KEY` is set or forwarded; the AI routes answer
+  HTTP 503 "Optional AI disabled". Turning AI on for a local experiment
+  means setting both variables in your own shell, and it still requires the
+  explicit per-request provider/data approval in the UI.
+- **The image is built from the committed `uv.lock`** (`uv sync --locked`),
+  so the build fails if `pyproject.toml` and `uv.lock` disagree. The
+  container runs as the unprivileged user `appuser` (uid 10001) with a
+  read-only root file system, all capabilities dropped and
+  `no-new-privileges`.
+- **If the host ports are already in use** (another local service on
+  `127.0.0.1:8000` or `127.0.0.1:8501`), do not edit `compose.yaml`.
+  Use a temporary override file that keeps the loopback binding:
+  `docker compose -f compose.yaml -f /tmp/ports.override.yaml up -d` with
+  `ports: !override ["127.0.0.1:18000:8000"]` (and `18501:8501` for the
+  UI). Never publish these demo ports on `0.0.0.0`.
+- **The Compose stack is not a pilot.** For anything beyond a local
+  synthetic demonstration use the pilot runbook above: real OIDC IdP,
+  PostgreSQL over verified TLS, `ADVISORY_DEPLOYMENT_MODE=pilot` and an
+  audited ingress. The Compose demo mode authenticates every request as a
+  local admin and must never be exposed to a network.
+- `scripts/docker_smoke.py` is a stdlib-only HTTP smoke test for a running
+  container. It creates a synthetic assessment, runs the rules-only
+  analysis, exports both report formats and asserts that the AI route is
+  refused; it exits non-zero on the first failure and needs no key.
+
