@@ -75,29 +75,43 @@ def run(base_url: str) -> bool:
     status, body = request(base_url, "GET", "/openapi.json")
     checks.expect("GET /openapi.json", status, body)
 
-    status, body = request(base_url, "POST", "/api/v1/assessments", {
-        "title": "Docker smoke assessment",
-        "organization": "LocalDemo",
-        "owner": "local_demo",
-        "business_problem": "Synthetic container smoke test only.",
-    })
+    status, body = request(
+        base_url,
+        "POST",
+        "/api/v1/assessments",
+        {
+            "title": "Docker smoke assessment",
+            "organization": "LocalDemo",
+            "owner": "local_demo",
+            "business_problem": "Synthetic container smoke test only.",
+        },
+    )
     checks.expect("POST /api/v1/assessments", status, body, 201)
     if status != 201:
         return False
     assessment_id = json.loads(body)["id"]
 
-    status, body = request(base_url, "POST", f"/api/v1/assessments/{assessment_id}/workflows",
-                            {"name": "Synthetic workflow"})
+    status, body = request(
+        base_url,
+        "POST",
+        f"/api/v1/assessments/{assessment_id}/workflows",
+        {"name": "Synthetic workflow"},
+    )
     checks.expect("POST assessments/{id}/workflows", status, body, 201)
     workflow_id = json.loads(body)["id"]
 
-    status, body = request(base_url, "POST", f"/api/v1/workflows/{workflow_id}/steps",
-                            {"name": "Compute shipping fee", "order": 1})
+    status, body = request(
+        base_url,
+        "POST",
+        f"/api/v1/workflows/{workflow_id}/steps",
+        {"name": "Compute shipping fee", "order": 1},
+    )
     checks.expect("POST workflows/{id}/steps", status, body, 201)
     step_id = json.loads(body)["id"]
 
-    status, body = request(base_url, "POST",
-                            f"/api/v1/workflow-steps/{step_id}/tasks", SYNTHETIC_TASK)
+    status, body = request(
+        base_url, "POST", f"/api/v1/workflow-steps/{step_id}/tasks", SYNTHETIC_TASK
+    )
     checks.expect("POST workflow-steps/{id}/tasks", status, body, 201)
 
     status, body = request(base_url, "POST", f"/api/v1/assessments/{assessment_id}/analyze")
@@ -110,10 +124,15 @@ def run(base_url: str) -> bool:
     checks.expect("GET report (html)", status, body)
 
     # The AI provider must stay off: no key is configured in the container.
-    status, body = request(base_url, "POST", f"/api/v1/assessments/{assessment_id}/ai/discovery", {
-        "send_to_provider": True,
-        "approved_non_sensitive_data": True,
-    })
+    status, body = request(
+        base_url,
+        "POST",
+        f"/api/v1/assessments/{assessment_id}/ai/discovery",
+        {
+            "send_to_provider": True,
+            "approved_non_sensitive_data": True,
+        },
+    )
     checks.expect("POST ai/discovery is refused (AI disabled)", status, body, 503)
 
     return all(checks.results.values())
@@ -121,8 +140,11 @@ def run(base_url: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL,
-                        help=f"API base URL of the running container (default {DEFAULT_BASE_URL})")
+    parser.add_argument(
+        "--base-url",
+        default=DEFAULT_BASE_URL,
+        help=f"API base URL of the running container (default {DEFAULT_BASE_URL})",
+    )
     arguments = parser.parse_args()
     ok = run(arguments.base_url.rstrip("/"))
     print("SMOKE RESULT:", "PASS" if ok else "FAIL")

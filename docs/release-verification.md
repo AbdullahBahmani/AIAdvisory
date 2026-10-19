@@ -360,18 +360,20 @@ as verified.
 
 ### FAILED / still open (honest list)
 
-- **`alembic check` FAILED inside the container**:
+- **`alembic check` drift — FOUND AND FIXED (2026-10-19, after this container
+  run).** During this run `alembic check` FAILED inside the container with
   `Detected type change from FLOAT() to Double() on 'answers.confidence'`
-  (`FAILED: New upgrade operations detected`, exit 255). This is **not**
-  caused by the container: the identical result was reproduced with the
-  local virtualenv outside Docker
-  (`DATABASE_URL=sqlite:////tmp/drift.sqlite3 alembic upgrade head` then
-  `alembic check`, same message, exit 255). It is a pre-existing
-  schema/metadata drift in the `answers.confidence` column type. The
-  migrations themselves apply cleanly to `0008_portfolio (head)` and the
-  application works against that schema, but the drift item remains
-  **OPEN** and is owned outside this task (`app/db/models.py` and
-  `migrations/`).
+  (`FAILED: New upgrade operations detected`, exit 255). It was **not** caused
+  by the container: the identical result reproduced with the local virtualenv
+  outside Docker. The cause was that migration `0001` created
+  `answers.confidence` as `FLOAT` while SQLAlchemy 2.1 infers `DOUBLE` for a
+  bare Python `float`, so the ORM models no longer described the schema the
+  migrations build — and nothing enforced the gate. It has since been fixed by
+  declaring the column type explicitly in `app/db/models.py` (no schema change
+  and no new migration; `FLOAT` and `DOUBLE` are equivalent in SQLite and
+  PostgreSQL), and `tests/test_alembic_drift.py` now rebuilds the schema from
+  the migration chain and fails if the models and migrations ever drift apart
+  again. `alembic check` now reports no drift.
 - The canonical host ports `127.0.0.1:8000` / `127.0.0.1:8501` could not be
   bound during the run because another local process held them; the HTTP
   checks were made on `127.0.0.1:18000` / `127.0.0.1:18501` with the same
