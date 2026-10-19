@@ -98,6 +98,16 @@ See OpenAPI for exact request schemas and validation errors. The rules-only endp
 
 ## Local verification
 
+One command runs every local gate (there is no hosted CI by owner direction):
+
+```bash
+python -m scripts.verify_all          # compile, lint, format, tests, migrations+drift,
+                                      # evaluation, portfolio regressions, demo
+python -m scripts.verify_all --list   # list the individual checks
+```
+
+The individual checks are also runnable on their own:
+
 ```bash
 python -m pytest -q
 python -m compileall -q app ui scripts tests migrations

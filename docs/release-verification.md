@@ -2,6 +2,25 @@
 
 **Current release state: BLOCKED.** Source-code hardening does not certify safe production use. `ADVISORY_DEPLOYMENT_MODE=production` deliberately refuses to boot.
 
+## Run every local gate in one command
+
+The repository has no hosted CI by owner direction, so the local checks live in one entry point:
+
+```bash
+python -m scripts.verify_all          # every local check, one verdict
+python -m scripts.verify_all --list   # list the checks
+python -m scripts.verify_all --only lint
+```
+
+It runs, in order: byte-compilation, `ruff check`, `ruff format --check`, the full test suite,
+the Alembic migration chain against a **fresh** database plus `alembic check` for drift, the
+31-case policy evaluation, the Phase 8 portfolio regressions, and the three synthetic demo
+journeys with their report exports. Exit code is non-zero if any check fails.
+
+This is a **local** gate. It does not run a live AI provider, a real IdP, production PostgreSQL,
+a penetration test or any external approval. A green result means "the local gate is green",
+never "this is approved for production".
+
 ## Local developer checks (no GitHub runners)
 
 ```bash
