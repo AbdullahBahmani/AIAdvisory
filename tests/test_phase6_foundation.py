@@ -1,5 +1,7 @@
 """Phase 6 offline regression tests; not a certification of live infrastructure."""
+
 from __future__ import annotations
+
 from pathlib import Path
 
 import pytest
@@ -59,11 +61,14 @@ def test_pilot_revision_precondition_returns_428_and_412(monkeypatch, tmp_path: 
     engine.dispose()
 
 
-@pytest.mark.parametrize("content", [
-    {"title": "Jane Doe jane@example.com"},
-    {"input": "api_key=examplelongsecretvalue"},
-    {"input": "-----BEGIN PRIVATE KEY-----"},
-])
+@pytest.mark.parametrize(
+    "content",
+    [
+        {"title": "Jane Doe jane@example.com"},
+        {"input": "api_key=examplelongsecretvalue"},
+        {"input": "-----BEGIN PRIVATE KEY-----"},
+    ],
+)
 def test_obvious_sensitive_data_fails_closed(content):
     with pytest.raises(HTTPException) as exc:
         assert_no_obvious_sensitive_data(content)
@@ -72,7 +77,9 @@ def test_obvious_sensitive_data_fails_closed(content):
 
 
 def test_benign_context_passes_extra_guard():
-    assert_no_obvious_sensitive_data({"title": "Classify fictional support requests", "tasks": ["no external actions"]})
+    assert_no_obvious_sensitive_data(
+        {"title": "Classify fictional support requests", "tasks": ["no external actions"]}
+    )
 
 
 def test_pilot_requires_oidc_postgres_and_verified_tls(monkeypatch):
@@ -88,7 +95,9 @@ def test_pilot_requires_oidc_postgres_and_verified_tls(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@db.local/aiadvisory")
     with pytest.raises(RuntimeError, match="sslmode"):
         check_deployment_configuration()
-    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://user:pass@db.local/aiadvisory?sslmode=verify-full")
+    monkeypatch.setenv(
+        "DATABASE_URL", "postgresql+psycopg://user:pass@db.local/aiadvisory?sslmode=verify-full"
+    )
     monkeypatch.setenv("ADVISORY_OIDC_ISSUER", "https://idp.example.test/realms/app")
     monkeypatch.setenv("ADVISORY_OIDC_AUDIENCE", "aiadvisory-api")
     monkeypatch.setenv("ADVISORY_OIDC_JWKS_URL", "https://idp.example.test/keys")
@@ -105,11 +114,13 @@ def test_production_remains_blocked_even_with_pilot_configuration(monkeypatch):
 def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
     from fastapi.testclient import TestClient
     from sqlalchemy import text
-    from app.main import app
-    from app.db.session import get_db
 
-    engine = create_engine(f"sqlite:///{tmp_path / 'readiness.sqlite3'}",
-                           connect_args={"check_same_thread": False})
+    from app.db.session import get_db
+    from app.main import app
+
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'readiness.sqlite3'}", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(engine)
 
     def override_db():
@@ -121,8 +132,12 @@ def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
         with TestClient(app) as client:
             assert client.get("/ready").status_code == 503
             with engine.begin() as connection:
-                connection.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-                connection.execute(text("INSERT INTO alembic_version (version_num) VALUES ('0008_portfolio')"))
+                connection.execute(
+                    text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+                )
+                connection.execute(
+                    text("INSERT INTO alembic_version (version_num) VALUES ('0008_portfolio')")
+                )
             assert client.get("/ready").json() == {"status": "ready"}
     finally:
         app.dependency_overrides.clear()
