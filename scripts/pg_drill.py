@@ -29,6 +29,7 @@ Configuration (all optional, all local-only):
     PG_DRILL_PASSWORD     default local_drill_only_pw (throwaway, local container only)
     PG_DRILL_KEEP         set to 1 to keep the containers and the dump file
 """
+
 from __future__ import annotations
 
 import argparse
@@ -103,10 +104,28 @@ def _wait_ready(container: str, timeout: int = 90) -> None:
 
 
 def _drop_database(container: str, name: str) -> None:
-    _docker("exec", container, "psql", "-U", USER, "-d", "postgres", "-c",
-            f"select pg_terminate_backend(pid) from pg_stat_activity where datname = '{name}'")
-    _docker("exec", container, "psql", "-U", USER, "-d", "postgres", "-c",
-            f'DROP DATABASE IF EXISTS "{name}"')
+    _docker(
+        "exec",
+        container,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f"select pg_terminate_backend(pid) from pg_stat_activity where datname = '{name}'",
+    )
+    _docker(
+        "exec",
+        container,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f'DROP DATABASE IF EXISTS "{name}"',
+    )
 
 
 def up() -> None:
@@ -118,18 +137,34 @@ def up() -> None:
     if CONTAINER in existing:
         _docker("rm", "-f", CONTAINER)
     _docker(
-        "run", "--name", CONTAINER,
-        "-e", f"POSTGRES_PASSWORD={PASSWORD}",
-        "-e", f"POSTGRES_USER={USER}",
-        "-e", f"POSTGRES_DB={DATABASE}",
-        "-p", f"{PORT}:5432",
-        "-d", IMAGE,
+        "run",
+        "--name",
+        CONTAINER,
+        "-e",
+        f"POSTGRES_PASSWORD={PASSWORD}",
+        "-e",
+        f"POSTGRES_USER={USER}",
+        "-e",
+        f"POSTGRES_DB={DATABASE}",
+        "-p",
+        f"{PORT}:5432",
+        "-d",
+        IMAGE,
     )
     _wait_ready(CONTAINER)
     # Start every drill from an empty database so results are reproducible.
     _drop_database(CONTAINER, DATABASE)
-    _docker("exec", CONTAINER, "psql", "-U", USER, "-d", "postgres",
-            "-c", f'CREATE DATABASE "{DATABASE}"')
+    _docker(
+        "exec",
+        CONTAINER,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f'CREATE DATABASE "{DATABASE}"',
+    )
     print(f"started {CONTAINER} ({IMAGE}) on 127.0.0.1:{PORT} -> {redacted_url()}")
 
 
@@ -172,8 +207,17 @@ def fresh() -> None:
     """Apply the chain to a brand new database, then reverse it."""
     fresh_name = f"{DATABASE}_fresh"
     _drop_database(CONTAINER, fresh_name)
-    _docker("exec", CONTAINER, "psql", "-U", USER, "-d", "postgres",
-            "-c", f'CREATE DATABASE "{fresh_name}"')
+    _docker(
+        "exec",
+        CONTAINER,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f'CREATE DATABASE "{fresh_name}"',
+    )
     url = database_url(database=fresh_name)
     print(f"== fresh database {fresh_name}: upgrade head ==")
     _alembic("upgrade", "head", url=url)
@@ -183,14 +227,23 @@ def fresh() -> None:
     _alembic("downgrade", "base", url=url)
     print(f"== fresh database {fresh_name}: upgrade head again ==")
     _alembic("upgrade", "head", url=url)
-    _docker("exec", CONTAINER, "psql", "-U", USER, "-d", "postgres",
-            "-c", f'DROP DATABASE IF EXISTS "{fresh_name}"')
+    _docker(
+        "exec",
+        CONTAINER,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f'DROP DATABASE IF EXISTS "{fresh_name}"',
+    )
     print(f"fresh database cycle OK ({fresh_name} dropped again)")
 
 
 def _seed(url: str) -> dict:
     """Create tenant, credential and assessments through the real API."""
-    seed = r'''
+    seed = r"""
 import json, os, sys
 from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
@@ -235,7 +288,7 @@ for assessment in created:
                          headers=headers)
     answer.raise_for_status()
 print(json.dumps({"organization_id": org_id, "assessments": len(created)}))
-'''
+"""
     env = dict(os.environ)
     env["DATABASE_URL"] = url
     env["ADVISORY_DEMO_MODE"] = "0"
@@ -269,7 +322,7 @@ def _row_counts(url: str) -> dict[str, int]:
 
 
 def _api_read(url: str) -> dict:
-    reader = r'''
+    reader = r"""
 import json
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -294,7 +347,7 @@ if items:
         detail_title = detail.json()["title"]
 print(json.dumps({"status": response.status_code, "count": len(items),
                   "detail_status": detail_status, "first_title": detail_title}))
-'''
+"""
     env = dict(os.environ)
     env["DATABASE_URL"] = url
     env["ADVISORY_DEMO_MODE"] = "1"
@@ -319,8 +372,9 @@ def backup_restore() -> None:
 
     print("== seeding source instance through the API ==")
     seeded = _seed(source_url)
-    print(f"seeded {seeded['assessments']} assessments for organization "
-          f"{seeded['organization_id']}")
+    print(
+        f"seeded {seeded['assessments']} assessments for organization {seeded['organization_id']}"
+    )
     source_counts = _row_counts(source_url)
     print("source row counts:", json.dumps(source_counts, indent=2))
     source_read = _api_read(source_url)
@@ -330,8 +384,19 @@ def backup_restore() -> None:
     started = time.perf_counter()
     with dump_path.open("wb") as handle:
         subprocess.run(
-            ["docker", "exec", "-i", CONTAINER, "pg_dump", "-U", USER, "-d", DATABASE,
-             "-Fc", "--no-owner"],
+            [
+                "docker",
+                "exec",
+                "-i",
+                CONTAINER,
+                "pg_dump",
+                "-U",
+                USER,
+                "-d",
+                DATABASE,
+                "-Fc",
+                "--no-owner",
+            ],
             stdout=handle,
             check=True,
         )
@@ -347,23 +412,52 @@ def backup_restore() -> None:
     if RESTORE_CONTAINER in existing:
         _docker("rm", "-f", RESTORE_CONTAINER)
     _docker(
-        "run", "--name", RESTORE_CONTAINER,
-        "-e", f"POSTGRES_PASSWORD={PASSWORD}",
-        "-e", f"POSTGRES_USER={USER}",
-        "-e", f"POSTGRES_DB={DATABASE}",
-        "-p", f"{RESTORE_PORT}:5432",
-        "-d", IMAGE,
+        "run",
+        "--name",
+        RESTORE_CONTAINER,
+        "-e",
+        f"POSTGRES_PASSWORD={PASSWORD}",
+        "-e",
+        f"POSTGRES_USER={USER}",
+        "-e",
+        f"POSTGRES_DB={DATABASE}",
+        "-p",
+        f"{RESTORE_PORT}:5432",
+        "-d",
+        IMAGE,
     )
     _wait_ready(RESTORE_CONTAINER)
-    _docker("exec", RESTORE_CONTAINER, "psql", "-U", USER, "-d", "postgres",
-            "-c", f'CREATE DATABASE "{restore_db}"')
+    _docker(
+        "exec",
+        RESTORE_CONTAINER,
+        "psql",
+        "-U",
+        USER,
+        "-d",
+        "postgres",
+        "-c",
+        f'CREATE DATABASE "{restore_db}"',
+    )
 
     print("== pg_restore ==")
     started = time.perf_counter()
     with dump_path.open("rb") as handle:
         subprocess.run(
-            ["docker", "exec", "-i", RESTORE_CONTAINER, "pg_restore", "-U", USER, "-d", restore_db,
-             "--no-owner", "--no-privileges", "--clean", "--if-exists"],
+            [
+                "docker",
+                "exec",
+                "-i",
+                RESTORE_CONTAINER,
+                "pg_restore",
+                "-U",
+                USER,
+                "-d",
+                restore_db,
+                "--no-owner",
+                "--no-privileges",
+                "--clean",
+                "--if-exists",
+            ],
             stdin=handle,
             check=True,
         )

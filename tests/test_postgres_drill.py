@@ -18,6 +18,7 @@ when the session ends, so it never mutates the application schema.
 
 A pass here is a *local* drill result, not a production PostgreSQL validation.
 """
+
 from __future__ import annotations
 
 import os
@@ -196,12 +197,27 @@ def test_migration_chain_applies_to_a_fresh_postgres_schema(pg_drill):
     inspector = inspect(pg_drill.engine)
     tables = set(inspector.get_table_names(schema=pg_drill.schema))
     expected = {
-        "assessments", "workflows", "workflow_steps", "tasks", "answers", "reviews",
-        "audit_events", "ai_runs", "organizations", "api_credentials",
-        "oidc_memberships", "request_limits", "reviewer_assignments",
-        "assessment_comments", "approval_votes", "inbox_notifications",
-        "opportunity_profiles", "opportunity_evidence", "value_scenarios",
-        "poc_plans", "poc_observations",
+        "assessments",
+        "workflows",
+        "workflow_steps",
+        "tasks",
+        "answers",
+        "reviews",
+        "audit_events",
+        "ai_runs",
+        "organizations",
+        "api_credentials",
+        "oidc_memberships",
+        "request_limits",
+        "reviewer_assignments",
+        "assessment_comments",
+        "approval_votes",
+        "inbox_notifications",
+        "opportunity_profiles",
+        "opportunity_evidence",
+        "value_scenarios",
+        "poc_plans",
+        "poc_observations",
     }
     assert expected <= tables
 
@@ -243,10 +259,14 @@ def test_migration_chain_downgrades_to_base_and_re_upgrades(pg_drill, pg_base_en
 
 def test_expected_indexes_exist_in_the_postgres_catalogue(pg_drill):
     with pg_drill.engine.connect() as conn:
-        rows = conn.execute(
-            text("select indexname from pg_indexes where schemaname = :schema"),
-            {"schema": pg_drill.schema},
-        ).scalars().all()
+        rows = (
+            conn.execute(
+                text("select indexname from pg_indexes where schemaname = :schema"),
+                {"schema": pg_drill.schema},
+            )
+            .scalars()
+            .all()
+        )
     present = set(rows)
     expected = {
         "ix_assessments_organization_id",
@@ -323,14 +343,18 @@ def test_tenant_list_query_uses_the_organization_index(pg_drill):
     try:
         with pg_drill.engine.connect() as conn:
             conn.execute(text("analyze assessments"))
-            plan = conn.execute(
-                text(
-                    "explain (analyze, buffers) select id from assessments "
-                    "where status != 'deleted' and organization_id = :org "
-                    "order by created_at desc limit 50"
-                ),
-                {"org": org_id},
-            ).scalars().all()
+            plan = (
+                conn.execute(
+                    text(
+                        "explain (analyze, buffers) select id from assessments "
+                        "where status != 'deleted' and organization_id = :org "
+                        "order by created_at desc limit 50"
+                    ),
+                    {"org": org_id},
+                )
+                .scalars()
+                .all()
+            )
         rendered = "\n".join(plan)
         assert "ix_assessments_organization_id" in rendered, rendered
         assert "Seq Scan on assessments" not in rendered, rendered
@@ -422,14 +446,18 @@ def test_tenant_list_ordering_has_no_index_backed_sort(pg_drill):
     try:
         with pg_drill.engine.connect() as conn:
             conn.execute(text("analyze assessments"))
-            plan = conn.execute(
-                text(
-                    "explain (analyze) select id from assessments "
-                    "where status != 'deleted' and organization_id = :org "
-                    "order by created_at desc limit 50"
-                ),
-                {"org": org_id},
-            ).scalars().all()
+            plan = (
+                conn.execute(
+                    text(
+                        "explain (analyze) select id from assessments "
+                        "where status != 'deleted' and organization_id = :org "
+                        "order by created_at desc limit 50"
+                    ),
+                    {"org": org_id},
+                )
+                .scalars()
+                .all()
+            )
         rendered = "\n".join(plan)
         assert "Sort" in rendered, rendered
     finally:
@@ -529,8 +557,9 @@ def test_if_match_preconditions_return_428_and_412_on_postgres(pg_drill, api_cli
     url = f"/api/v1/assessments/{assessment['id']}"
     revision = assessment["revision"]
 
-    missing = api_client.patch(url, json={"title": "No precondition"},
-                               headers=api_principal.headers)
+    missing = api_client.patch(
+        url, json={"title": "No precondition"}, headers=api_principal.headers
+    )
     assert missing.status_code == 428, missing.text
 
     stale = api_client.patch(
