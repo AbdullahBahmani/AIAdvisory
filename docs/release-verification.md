@@ -21,6 +21,47 @@ This is a **local** gate. It does not run a live AI provider, a real IdP, produc
 a penetration test or any external approval. A green result means "the local gate is green",
 never "this is approved for production".
 
+## Distributed rate limiting and load check (local, synthetic)
+
+The rate limiter stores its counter in the application database with an atomic upsert, so it
+*should* be shared by every API replica pointing at the same database. "Should" is not
+evidence, so this is now checked directly.
+
+```bash
+# disposable PostgreSQL (or omit --database-url for a throwaway SQLite file)
+python -m scripts.pg_drill up
+python -m scripts.load_check \
+  --database-url "postgresql+psycopg://aiadvisory:local_drill_only_pw@127.0.0.1:15432/aiadvisory" \
+  --instances 4 --capacity 30 --requests 120
+python -m scripts.pg_drill down
+```
+
+The harness starts N **real** API processes against one shared database, provisions a throwaway
+credential, and fires concurrent authenticated requests across them. The assertion is that the
+per-principal limit is enforced **globally**: the number of admitted requests must not exceed
+the configured capacity. A per-process limiter would admit up to `capacity × instances`, and
+that is precisely the failure mode the check exists to catch.
+
+Measured results:
+
+| Instances | Backend | Capacity | Requests | Admitted (2xx) | Rate limited (429) | p50 | p95 | Throughput |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | SQLite | 20 | 60 | **20** | 40 | 184 ms | 1227 ms | 44.8 rps |
+| 3 | PostgreSQL 16 | 25 | 90 | **25** | 65 | 92 ms | 225 ms | 378.7 rps |
+| 4 | PostgreSQL 16 | 30 | 120 | **30** | 90 | 116 ms | 232 ms | 462.7 rps |
+
+In every case the admitted count equalled the capacity exactly and never exceeded it, so the
+limit is enforced across replicas, not per process. No unexpected status codes and no
+connection errors occurred. The verdict logic is covered offline by
+`tests/test_load_check.py`, including the case that detects a per-process limiter.
+
+**What this is not.** This is a local, synthetic check with a throwaway database, throwaway
+credentials and a handful of processes on one host. It is **not** a capacity or load test at
+production volume, and it says nothing about ingress/WAF limits against unauthenticated
+floods, TLS termination overhead, or behaviour under partial database failure. The
+per-principal limiter is an application-level control; an ingress limit in front of it is
+still required by P5-05.
+
 ## Local developer checks (no GitHub runners)
 
 ```bash
