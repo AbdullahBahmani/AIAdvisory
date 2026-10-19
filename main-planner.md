@@ -357,7 +357,15 @@ An FDE can, using the app and not manual DB edits:
 
 ## 13. Start-here checklist and sequencing decisions
 
-**Implementation progress:** Phases 1–3 are implemented for local synthetic-data use and maintained on `main`; Phase 0 dependency lock/Ruff checks and Phase 5 identity/tenancy/security gates remain open. No hosted runners. Next is Phase 4 reporting, evaluation fixtures and containerized demo; continue forbidding real or sensitive data until production controls are in place.
+**Implementation progress (2026-10-20):** Phases 0–8 are implemented on `main` and the local
+verification that was previously blocked is now done (Python 3.12 lock, clean lint, 148 passing
+tests, drift-free migrations, a booting Docker deployment, a real PostgreSQL drill, and a 31-case
+evaluation corpus). Phases 5–8 release gates remain open because they depend on external
+evidence — a real IdP, privacy sign-off, off-site encrypted backups, TLS/WAF, scanning, a pen
+test, a named approver and field evaluation. No hosted runners. Continue forbidding real or
+sensitive data until those gates are satisfied. Phase 9 (`docs/phase9.md`) defines the next
+increment: decision attribution, provenance, evaluation expansion, value sensitivity and
+ranking calibration.
 
 **Recommended implementation PR order:**
 1. Project scaffold and docs
@@ -369,7 +377,20 @@ An FDE can, using the app and not manual DB edits:
 7. FDE review, challenge and reports
 8. Evaluation, containerized demo and security hardening
 
-**Open decisions to resolve early:** local-only vs authorized pilot audience; model provider and permitted data regions; value/score thresholds after reviewing sample assessments; whether PDF is MVP-critical; hosting environment. Record each decision as an ADR rather than hiding it in prompt text.
+**Open decisions — now recorded as ADRs (2026-10-20).** The planner asked for each to be written
+down rather than held implicitly. All four are now decided for the current posture, each with
+explicit conditions under which it must be revisited:
+
+| Open decision | Decision | ADR |
+| --- | --- | --- |
+| Local-only vs authorized pilot audience; hosting environment | Local/synthetic only. A pilot needs a real IdP + MFA, independent access-control verification, a backup/restore drill, privacy sign-off, managed TLS/ingress, monitoring, scanning, a pen test and a named approver. | [ADR-0010](docs/decisions/0010-deployment-audience-and-hosting.md) |
+| Model provider and permitted data regions | **No** provider is provisioned or approved; no data leaves the boundary. The provider stays off by default and every permitted region set is empty. | [ADR-0011](docs/decisions/0011-no-external-model-provider.md) |
+| Value/score thresholds after reviewing sample assessments | Weights and thresholds stay fixed versioned constants, not operator-tunable. Recalibration requires P8-09 field evidence and an ADR; the synthetic corpus may check for regressions but may not justify a change. | [ADR-0012](docs/decisions/0012-value-and-score-thresholds.md) |
+| Whether PDF is MVP-critical | It is not. Markdown and HTML remain the supported exports; HTML-to-PDF is an operator convenience, not a validated pipeline. | [ADR-0013](docs/decisions/0013-pdf-export-not-mvp-critical.md) |
+
+**Still genuinely open (requires the owner, not the code):** value and score thresholds *after*
+real sample assessments exist, the identity provider and hosting environment for an authorised
+pilot, and every Phase 5–8 release gate listed above.
 
 **Progress convention:** Change a box to checked only after merging implementation and verifying its exit criteria. Update the status line, blockers, decisions, and evidence links as work progresses. This planning commit does **not** claim any application code was built.
 
