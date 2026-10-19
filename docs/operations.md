@@ -20,7 +20,7 @@
 
 ## Database and backups
 
-- Local test uses SQLite; `SQLAlchemy` uses `DATABASE_URL` for PostgreSQL when the optional `.[postgres]` driver is installed. **Live PostgreSQL migration, load, isolation, failure, backup and restore tests have NOT been run.** Use TLS, least-privilege service account, non-default secrets and a managed database when piloting.
+- Local test uses SQLite; `SQLAlchemy` uses `DATABASE_URL` for PostgreSQL when the optional `.[postgres]` driver is installed. A **local, disposable** PostgreSQL drill has now been run (see "PostgreSQL drill" below): migration chain, `alembic check`, downgrade, concurrency, rate limiting, index review and a `pg_dump`/`pg_restore` rehearsal against a throwaway container. **That drill is not a production PostgreSQL validation** — no managed instance, no TLS, no encryption, no off-site copy, no capacity or load test and no tested RPO/RTO. Use TLS, least-privilege service account, non-default secrets and a managed database when piloting.
 - Stop the app before a filesystem SQLite copy, or use SQLite's online `.backup()` API to a protected file; encrypt backups at rest and test restore to a separate database. For PostgreSQL, take encrypted managed snapshots/`pg_dump` and drill `pg_restore` in isolation; do not log DB URL credentials.
 - Establish written retention, deletion, soft-delete, backup expiry, export access, DSAR process and legal hold policies *before* collecting real data. A soft-deleted record is not erased; it remains in the database and audit log. Do not call this GDPR-complete.
 - Use a single migration owner, preserve reversible backups, and review Alembic before release. Schema `0004_tenant_security` does NOT attach legacy data to a new tenant.
@@ -36,7 +36,7 @@
 
 - [ ] Independent identity/SSO, MFA, verified tenant provisioning and user lifecycle
 - [ ] Automated negative authorization tests for every endpoint, including AI acceptance and reports, in the *full merged repository*
-- [ ] PostgreSQL deployment, concurrency, migrations, backup and restore drill
+- [ ] PostgreSQL deployment, concurrency, migrations, backup and restore drill — *local drill done 2026-10-19, production drill still OPEN*
 - [ ] Data processing agreements, residency/retention consent, redaction/DLP and deletion runbook
 - [ ] TLS ingress, distributed request limiting, CSRF/session review for browser deployment
 - [ ] Secret lifecycle and key rotation, dependency/audit scanner, penetration test
@@ -49,7 +49,7 @@
 1. Provision an HTTPS IdP with RS256 signing, short-lived access tokens, MFA and proper issuer/audience configuration. Set `ADVISORY_OIDC_REQUIRED=1`, `ADVISORY_DEPLOYMENT_MODE=pilot`, and `ADVISORY_OIDC_ISSUER`, `ADVISORY_OIDC_AUDIENCE`, `ADVISORY_OIDC_JWKS_URL` on the API host. Configure TLS/WAF before any external users. The JWKS URL must be HTTPS and on the pinned issuer's hostname.
 2. On a trusted shell run `python -m alembic upgrade head`; `python -m scripts.admin create-org --organization 'Example'`; then `python -m scripts.admin grant-oidc --organization 'Example' --issuer 'https://login.example.com' --subject 'subject-from-IdP' --role reviewer`. Use `disable-oidc --membership-id ...` to deactivate. No tenant roles come from claims or user-submitted organization names.
 3. The authenticated limiter defaults to 120 requests/minute per org/subject/role. Set `ADVISORY_REQUESTS_PER_MINUTE` for piloting, monitor 429 and response `Retry-After`, schedule `python -m scripts.admin prune-ratelimits`. Deploy a separately enforced edge/IP limit before internet exposure.
-4. SQLite: `python -m scripts.maintenance backup-sqlite --output /protected/backup.sqlite3`; verify permissions and run a restore rehearsal on a separate instance. On PostgreSQL use encrypted `pg_dump` and `pg_restore`, managed backups and least-privilege roles. Live PostgreSQL was **not available for verification** in this implementation session.
+4. SQLite: `python -m scripts.maintenance backup-sqlite --output /protected/backup.sqlite3`; verify permissions and run a restore rehearsal on a separate instance. On PostgreSQL use encrypted `pg_dump` and `pg_restore`, managed backups and least-privilege roles. A local disposable PostgreSQL drill was run on 2026-10-19 (see "PostgreSQL drill" below); the **managed production** instance, encrypted off-site backups and a signed-off RPO/RTO are still **not** verified.
 5. Deletion: `python -m scripts.maintenance purge-soft-deleted --organization-id <uuid> --before 2026-09-01T00:00:00+00:00` only previews. Add `--execute` after confirming tenant, legal hold, separate tested backup and retention approval. The hard purge also destroys per-assessment audit events; update legal records as required.
 6. A real production launch requires independent security and operational sign-off; `ADVISORY_DEPLOYMENT_MODE=production` intentionally refuses boot. Never use local/demo mode to bypass a blocked gate. See `docs/release-verification.md`.
 
@@ -176,3 +176,49 @@ Operator notes:
   analysis, exports both report formats and asserts that the AI route is
   refused; it exits non-zero on the first failure and needs no key.
 
+## PostgreSQL drill (local, disposable) — 2026-10-19
+
+`python -m scripts.pg_drill all` reproduces the P5-03 drill on a throwaway
+`postgres:16-alpine` container: `up` (start + empty database) → `migrate`
+(`alembic upgrade head` + `alembic check`) → `fresh` (brand-new database,
+upgrade, check, `downgrade base`, upgrade again) → `backup-restore` (`pg_dump`
+→ second container → `pg_restore` → row-count and API verification) → `down`
+(remove both containers). Configuration is via `PG_DRILL_*` environment
+variables; `PG_DRILL_PASSWORD` defaults to a throwaway local-only value that
+must never be reused anywhere else. The drill writes nothing into the
+repository and leaves no container or dump file behind.
+
+`tests/test_postgres_drill.py` holds the automated part (16 tests). It is
+skipped unless a PostgreSQL URL is configured, so the default SQLite run is
+unchanged:
+
+```bash
+ADVISORY_PG_DRILL_URL=postgresql+psycopg://user:pass@127.0.0.1:15432/db \
+  python -m pytest -q tests/test_postgres_drill.py
+```
+
+It covers: the migration chain on a fresh schema, `alembic check` (no drift),
+`downgrade base` and re-upgrade, the index/constraint catalogue, the
+optimistic write version, the `SELECT … FOR UPDATE` row lock, the `If-Match`
+preconditions (428/412/409), cross-tenant isolation and the atomic rate
+limiter. The drill uses its own `aiadvisory_pg_drill` schema and drops it
+afterwards.
+
+Operational notes for a real pilot, raised by the drill and still open:
+
+- The 125 pre-existing tests are SQLite-bound: they build their own
+  `sqlite:///` database and override `get_db`, so they never execute a
+  statement against PostgreSQL even when `DATABASE_URL` points at it. A
+  backend-parametrized suite is still required.
+- `inbox_notifications.assessment_id` is the only foreign key without a
+  supporting index; add one before relying on cascading deletes at volume.
+- `assessments` has no composite `(organization_id, created_at DESC)` index,
+  so the tenant listing and portfolio endpoints sort each tenant's rows in
+  memory on every request. Add it and re-check the plans with production-like
+  row counts.
+- `ix_answers_key` is not used by any application query; it only costs write
+  throughput.
+- The drill's `pg_dump`/`pg_restore` timings (~0.25 s for ~185 KB of synthetic
+  data) are **not** an RPO/RTO figure. Production needs encrypted off-site
+  backups, point-in-time recovery, a written retention/deletion policy and an
+  independent restore rehearsal at realistic volume.
