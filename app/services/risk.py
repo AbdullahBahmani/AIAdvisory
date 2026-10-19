@@ -23,7 +23,9 @@ def evaluate_risks(inputs: list[RiskInput]) -> list[RiskResult]:
         if score >= 5:
             controls.append("Verify AI outputs against known ground truth")
         if score >= 10:
-            controls.extend(["Human approval before consequential actions", "Audit and rollback plan"])
+            controls.extend(
+                ["Human approval before consequential actions", "Audit and rollback plan"]
+            )
         if score >= 17:
             controls.append("No autonomous action until risk is explicitly mitigated")
         results.append(

@@ -2,23 +2,19 @@
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
-from app.db.session import get_db
-from app.deployment import check_deployment_configuration
-from app.telemetry import instrument_request
 
-from app.security import authenticate_request
-
-from app.api.assessments import router as assessments_router
 from app.api.advisor import router as advisor_router
+from app.api.assessments import router as assessments_router
+from app.api.portfolio import router as portfolio_router
 from app.api.reports import router as reports_router
 from app.api.workspace import router as workspace_router
-from app.api.portfolio import router as portfolio_router
-from pydantic import BaseModel
-
+from app.db.session import get_db
+from app.deployment import check_deployment_configuration
 from app.domain.schemas import (
     AssessmentPreviewRequest,
     AssessmentPreviewResponse,
@@ -26,8 +22,10 @@ from app.domain.schemas import (
     DiscoveryResult,
     Question,
 )
+from app.security import authenticate_request
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
+from app.telemetry import instrument_request
 
 APP_VERSION = "0.8.0"
 
@@ -42,7 +40,9 @@ app = FastAPI(
 
 @app.exception_handler(StaleDataError)
 async def stale_write_conflict(_request, _exc):
-    return JSONResponse(status_code=409, content={"detail": "Assessment changed concurrently; reload and retry"})
+    return JSONResponse(
+        status_code=409, content={"detail": "Assessment changed concurrently; reload and retry"}
+    )
 
 
 @app.get("/ready", include_in_schema=False, tags=["health"])
@@ -73,17 +73,32 @@ def health() -> HealthResponse:
     )
 
 
-@app.get("/api/v1/discovery/questions", response_model=list[Question], tags=["discovery"], dependencies=[Depends(authenticate_request)])
+@app.get(
+    "/api/v1/discovery/questions",
+    response_model=list[Question],
+    tags=["discovery"],
+    dependencies=[Depends(authenticate_request)],
+)
 def questions() -> list[Question]:
     return list(QUESTIONS)
 
 
-@app.post("/api/v1/discovery/next-question", response_model=DiscoveryResult, tags=["discovery"], dependencies=[Depends(authenticate_request)])
+@app.post(
+    "/api/v1/discovery/next-question",
+    response_model=DiscoveryResult,
+    tags=["discovery"],
+    dependencies=[Depends(authenticate_request)],
+)
 def next_question(payload: DiscoveryRequest) -> DiscoveryResult:
     return summarize_discovery(payload.answers)
 
 
-@app.post("/api/v1/analysis/preview", response_model=AssessmentPreviewResponse, tags=["analysis"], dependencies=[Depends(authenticate_request)])
+@app.post(
+    "/api/v1/analysis/preview",
+    response_model=AssessmentPreviewResponse,
+    tags=["analysis"],
+    dependencies=[Depends(authenticate_request)],
+)
 def preview_analysis(payload: AssessmentPreviewRequest) -> AssessmentPreviewResponse:
     return analyze(payload)
 

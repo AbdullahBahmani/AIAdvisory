@@ -1,4 +1,5 @@
 """Pure, reproducible, explicitly provisional portfolio and value calculations."""
+
 from __future__ import annotations
 
 from decimal import Decimal
@@ -10,8 +11,7 @@ from app.domain.portfolio import ValueScenarioIn
 def value_projection(values: ValueScenarioIn) -> tuple[Decimal, Decimal, Decimal | None]:
     """One currency, one period. No assumed adoption, taxes or discount rate."""
     saved_hours = (
-        values.cases_per_period * (values.baseline_minutes - values.target_minutes)
-        / Decimal("60")
+        values.cases_per_period * (values.baseline_minutes - values.target_minutes) / Decimal("60")
     )
     gross = saved_hours * values.hourly_cost
     net = gross - values.recurring_cost

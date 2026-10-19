@@ -3,10 +3,14 @@
 The client-visible assessment revision detects stale UI edits; SQLAlchemy's
 independent write_version column is the transactional lost-update guard.
 """
+
 from __future__ import annotations
+
 import os
+
 from fastapi import HTTPException
 from sqlalchemy.orm import object_session
+
 
 def assert_current_revision(assessment) -> None:
     session = object_session(assessment)
@@ -23,6 +27,10 @@ def assert_current_revision(assessment) -> None:
         return
     expected = session.info.get("if_match")
     if expected is None:
-        raise HTTPException(status_code=428, detail="If-Match assessment revision required; reload the assessment")
+        raise HTTPException(
+            status_code=428, detail="If-Match assessment revision required; reload the assessment"
+        )
     if expected != f'"{assessment.revision}"':
-        raise HTTPException(status_code=412, detail="Assessment revision changed; reload before writing")
+        raise HTTPException(
+            status_code=412, detail="Assessment revision changed; reload before writing"
+        )

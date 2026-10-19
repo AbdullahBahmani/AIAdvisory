@@ -4,7 +4,6 @@ from decimal import Decimal
 
 from app.domain.schemas import ValueInputs, ValueResult
 
-
 NEEDED_FIELDS = (
     "cases_per_period",
     "baseline_minutes_per_case",
@@ -44,7 +43,9 @@ def calculate_value(inputs: ValueInputs) -> ValueResult:
     )
     notes = ["Illustrative labor savings only; validate actual adoption, quality and baseline."]
     if saved < 0:
-        notes.append("Target handling time is higher than baseline; estimated labor value is negative.")
+        notes.append(
+            "Target handling time is higher than baseline; estimated labor value is negative."
+        )
     if net is None:
         notes.append("Operating cost unknown; net savings cannot be established.")
     return ValueResult(

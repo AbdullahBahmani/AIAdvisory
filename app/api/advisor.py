@@ -7,14 +7,13 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.ai.provider import AIProvider, get_ai_provider
-from app.ai.schemas import AIRunRecord, AIRequest, Feature, AcceptTaskSuggestions
+from app.ai.schemas import AcceptTaskSuggestions, AIRequest, AIRunRecord, Feature
 from app.ai.service import list_proposals, run_proposal
-from app.api.assessments import (get_or_404, change_inputs,
-                                 check_mutable, task_out, audit)
+from app.api.assessments import audit, change_inputs, check_mutable, get_or_404, task_out
 from app.db.models import AIRunRow, AssessmentRow, StepRow, TaskRow
 from app.db.session import get_db
-from app.security import require_reviewer_or_local_demo, current_principal
 from app.domain.persistence import StoredTask
+from app.security import current_principal, require_reviewer_or_local_demo
 
 router = APIRouter(prefix="/api/v1/assessments", tags=["ai-advisory"])
 
@@ -33,19 +32,30 @@ def require_ai_access(token: str | None) -> None:
 
 @router.post("/{assessment_id}/ai/{feature}", response_model=AIRunRecord, status_code=201)
 def generate_proposal(
-    assessment_id: str, feature: Feature, payload: AIRequest,
-    db: Session = Depends(get_db), provider: AIProvider = Depends(get_ai_provider),
+    assessment_id: str,
+    feature: Feature,
+    payload: AIRequest,
+    db: Session = Depends(get_db),
+    provider: AIProvider = Depends(get_ai_provider),
     x_ai_access_token: str | None = Header(default=None),
 ):
     require_ai_access(x_ai_access_token)
-    return run_proposal(db, get_or_404(db, AssessmentRow, assessment_id), feature, payload, provider)
+    return run_proposal(
+        db, get_or_404(db, AssessmentRow, assessment_id), feature, payload, provider
+    )
 
 
-@router.post("/{assessment_id}/ai-runs/{run_id}/accept-tasks",
-             response_model=list[StoredTask], status_code=201)
+@router.post(
+    "/{assessment_id}/ai-runs/{run_id}/accept-tasks",
+    response_model=list[StoredTask],
+    status_code=201,
+)
 def accept_task_drafts(
-    assessment_id: str, run_id: str, payload: AcceptTaskSuggestions,
-    x_reviewer_token: str | None = Header(default=None), db: Session = Depends(get_db),
+    assessment_id: str,
+    run_id: str,
+    payload: AcceptTaskSuggestions,
+    x_reviewer_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
 ):
     # A deliberate, token-guarded action, not automatic model acceptance. The
     # dedicated reviewer token is still local-only and not real user identity.
@@ -56,7 +66,9 @@ def accept_task_drafts(
     if run is None or run.assessment_id != row.id or run.feature != Feature.WORKFLOW:
         raise HTTPException(status_code=404, detail="Workflow AI proposal not found")
     if run.assessment_revision != row.revision:
-        raise HTTPException(status_code=409, detail="Stale AI proposal; regenerate after assessment edits")
+        raise HTTPException(
+            status_code=409, detail="Stale AI proposal; regenerate after assessment edits"
+        )
     drafts = run.proposal.get("suggested_tasks", [])
     selected = payload.selected_indices
     if len(set(selected)) != len(selected) or any(i < 0 or i >= len(drafts) for i in selected):
@@ -72,15 +84,28 @@ def accept_task_drafts(
     change_inputs(row)
     created = []
     for step, item in rows:
-        task = TaskRow(step_id=step.id, title=item["title"],
-                       description=item["description"],
-                       decision_type="unknown", signals={}, actions=[], risks=[])
+        task = TaskRow(
+            step_id=step.id,
+            title=item["title"],
+            description=item["description"],
+            decision_type="unknown",
+            signals={},
+            actions=[],
+            risks=[],
+        )
         db.add(task)
         db.flush()
         created.append(task_out(task))
     principal = current_principal(db)
-    audit(db, row, "ai.task_drafts_accepted", actor=payload.reviewer_label if principal.demo else principal.subject,
-          source_run_id=run.id, selected_indices=selected, rationale=payload.rationale,
-          identity_unverified=principal.demo)
+    audit(
+        db,
+        row,
+        "ai.task_drafts_accepted",
+        actor=payload.reviewer_label if principal.demo else principal.subject,
+        source_run_id=run.id,
+        selected_indices=selected,
+        rationale=payload.rationale,
+        identity_unverified=principal.demo,
+    )
     db.commit()
     return created

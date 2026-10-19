@@ -3,6 +3,7 @@
 On PostgreSQL the upsert works across API replicas. SQLite is for one-user demos;
 production must additionally use an ingress/WAF limit to stop unauthenticated floods.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -47,4 +48,8 @@ def enforce_limit(db: Session, *, org: str, principal: str, role: str) -> None:
         db.rollback()
         raise HTTPException(status_code=503, detail="Rate limiter unavailable") from None
     if count > capacity:
-        raise HTTPException(status_code=429, detail="Request rate limit exceeded", headers={"Retry-After": str(60 - int(time.time()) % 60)})
+        raise HTTPException(
+            status_code=429,
+            detail="Request rate limit exceeded",
+            headers={"Retry-After": str(60 - int(time.time()) % 60)},
+        )

@@ -31,42 +31,56 @@ def evaluate_rules(
     if s.deterministic_rules or task.decision_type == "deterministic":
         add("DET-001", RuleSeverity.PREFERENCE, "Rules are expressible as deterministic code.")
     if s.exact_math:
-        add("MATH-001", RuleSeverity.PREFERENCE, "Exact arithmetic must use typed code, not LLM math.")
+        add(
+            "MATH-001",
+            RuleSeverity.PREFERENCE,
+            "Exact arithmetic must use typed code, not LLM math.",
+        )
     if s.requires_authoritative_lookup:
-        add("DATA-001", RuleSeverity.PREFERENCE, "Authoritative facts require validated system lookup.")
+        add(
+            "DATA-001",
+            RuleSeverity.PREFERENCE,
+            "Authoritative facts require validated system lookup.",
+        )
     if s.zero_error_tolerance and not s.output_verifiable:
         add(
-            "SAFE-001", RuleSeverity.BLOCK_AUTONOMOUS_AI,
+            "SAFE-001",
+            RuleSeverity.BLOCK_AUTONOMOUS_AI,
             "Zero-error tolerance without independent verification.",
             "Do not automate this decision with an unverified AI result",
         )
     if s.action_irreversible and s.high_consequence:
         add(
-            "ACT-001", RuleSeverity.REQUIRE_APPROVAL,
+            "ACT-001",
+            RuleSeverity.REQUIRE_APPROVAL,
             "Irreversible, consequential action requires approval.",
             "Human approval, allowlist, audit, and safe rollback if possible",
         )
     if any(action in HUMAN_ONLY for action in task.actions):
         add(
-            "HUM-001", RuleSeverity.HUMAN_ONLY,
+            "HUM-001",
+            RuleSeverity.HUMAN_ONLY,
             "The requested final decision is reserved for an accountable professional.",
             "Human must make the final decision; AI may only support safe preparation",
         )
     if any(action in APPROVAL_REQUIRED for action in task.actions):
         add(
-            "ACT-002", RuleSeverity.REQUIRE_APPROVAL,
+            "ACT-002",
+            RuleSeverity.REQUIRE_APPROVAL,
             "This business action requires a human or strong deterministic authorization gate.",
             "Explicit policy approval and least-privilege execution rights",
         )
     if s.sensitive_data and s.provider_data_permitted is not True:
         add(
-            "PRIV-001", RuleSeverity.BLOCK_PROVIDER_DATA,
+            "PRIV-001",
+            RuleSeverity.BLOCK_PROVIDER_DATA,
             "Sensitive information cannot go to an external model without proven permission.",
             "Do not send data to an AI provider; confirm policy, residency and retention",
         )
     if s.permission_to_use_data is False:
         add(
-            "PRIV-002", RuleSeverity.BLOCK_PROVIDER_DATA,
+            "PRIV-002",
+            RuleSeverity.BLOCK_PROVIDER_DATA,
             "The workflow lacks permission to use this data.",
             "Obtain authorization before processing data",
         )

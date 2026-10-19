@@ -3,6 +3,7 @@
 An API token identifies a provisioned principal, not an SSO or human identity proof.
 The explicit unauthenticated demo switch is only for loopback synthetic workflows.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -10,7 +11,7 @@ import os
 import re
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
@@ -55,31 +56,49 @@ def authenticate_request(request: Request, db: Session = Depends(get_db)) -> Pri
     else:
         authorization = request.headers.get("authorization", "")
         if not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Bearer credential required", headers={"WWW-Authenticate": "Bearer"})
-        bearer = authorization[len("Bearer "):]
+            raise HTTPException(
+                status_code=401,
+                detail="Bearer credential required",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        bearer = authorization[len("Bearer ") :]
         match = TOKEN_RE.fullmatch(authorization)
         if match is not None:
             if os.getenv("ADVISORY_OIDC_REQUIRED") == "1":
                 raise HTTPException(status_code=401, detail="OIDC access token required")
-            row = db.scalar(select(ApiCredentialRow).where(ApiCredentialRow.token_hash == digest_token(match.group(1))))
-            now = datetime.now(timezone.utc)
+            row = db.scalar(
+                select(ApiCredentialRow).where(
+                    ApiCredentialRow.token_hash == digest_token(match.group(1))
+                )
+            )
+            now = datetime.now(UTC)
             if row is None or row.revoked_at is not None or row.role not in ROLE_LEVEL:
                 raise HTTPException(status_code=401, detail="Invalid or revoked API credential")
             expiration = row.expires_at
-            if expiration is not None and (expiration.replace(tzinfo=timezone.utc) if expiration.tzinfo is None else expiration) <= now:
+            if (
+                expiration is not None
+                and (expiration.replace(tzinfo=UTC) if expiration.tzinfo is None else expiration)
+                <= now
+            ):
                 raise HTTPException(status_code=401, detail="Expired API credential")
             if not row.organization_id:
                 raise HTTPException(status_code=401, detail="API credential has no organization")
-            principal = Principal(subject=row.subject, organization_id=row.organization_id, role=row.role)
+            principal = Principal(
+                subject=row.subject, organization_id=row.organization_id, role=row.role
+            )
         else:
             # OIDC requires pinned issuer/audience/JWKS and pre-provisioned DB membership.
             if len(bearer) > 10000 or not bearer or bearer.count(".") != 2:
                 raise HTTPException(status_code=401, detail="Invalid bearer credential")
-            sub, organization, role = oidc_identity(db, bearer, request.headers.get("X-Organization-ID"))
+            sub, organization, role = oidc_identity(
+                db, bearer, request.headers.get("X-Organization-ID")
+            )
             if role not in ROLE_LEVEL:
                 raise HTTPException(status_code=403, detail="Invalid membership role")
             principal = Principal(subject=sub, organization_id=organization, role=role)
-        enforce_limit(db, org=principal.organization_id, principal=principal.subject, role=principal.role)
+        enforce_limit(
+            db, org=principal.organization_id, principal=principal.subject, role=principal.role
+        )
     db.info["if_match"] = request.headers.get("if-match")
     db.info["principal"] = principal
     request.state.principal = principal

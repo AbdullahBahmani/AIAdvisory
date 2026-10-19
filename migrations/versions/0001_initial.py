@@ -4,8 +4,8 @@ Revision ID: 0001
 Revises:
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0001"
 down_revision = None
@@ -33,7 +33,12 @@ def upgrade():
     op.create_table(
         "workflows",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(300), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
@@ -41,7 +46,12 @@ def upgrade():
     op.create_table(
         "workflow_steps",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("workflow_id", sa.String(36), sa.ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "workflow_id",
+            sa.String(36),
+            sa.ForeignKey("workflows.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(300), nullable=False),
         sa.Column("position", sa.Integer(), nullable=False),
         sa.Column("owner", sa.String(200)),
@@ -53,7 +63,12 @@ def upgrade():
     op.create_table(
         "tasks",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("step_id", sa.String(36), sa.ForeignKey("workflow_steps.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "step_id",
+            sa.String(36),
+            sa.ForeignKey("workflow_steps.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("title", sa.String(300), nullable=False),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("decision_type", sa.String(24), nullable=False),
@@ -66,7 +81,12 @@ def upgrade():
     op.create_table(
         "answers",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("key", sa.String(120), nullable=False),
         sa.Column("value", sa.JSON(), nullable=False),
         sa.Column("kind", sa.String(24), nullable=False),
@@ -79,7 +99,12 @@ def upgrade():
     op.create_table(
         "reviews",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("analysis_revision", sa.Integer(), nullable=False),
         sa.Column("reviewer_id", sa.String(200), nullable=False),
         sa.Column("selected_category", sa.String(60), nullable=False),
@@ -92,7 +117,12 @@ def upgrade():
     op.create_table(
         "audit_events",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("assessment_id", sa.String(36), sa.ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "assessment_id",
+            sa.String(36),
+            sa.ForeignKey("assessments.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("event_type", sa.String(70), nullable=False),
         sa.Column("actor", sa.String(200), nullable=False),
         sa.Column("details", sa.JSON(), nullable=False),
