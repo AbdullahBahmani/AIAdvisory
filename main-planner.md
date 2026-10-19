@@ -4,7 +4,9 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status:** Phase 5 additional code merged to `main` (2026-10-13): optional pinned-issuer/audience RS256 OIDC validation, operator-provisioned OIDC tenant memberships, OIDC-only mode, SQL atomic per-principal rate limits, backup/tenant-retention commands and fail-closed production boot guard. Local reconstructed legacy/API + new hardening suite **73 passing tests**, four synthetic golden policy evaluations, six generated demo reports, and SQLite migrations 0001–0005 with no schema drift. **Not verified:** full merged Phase 3+5 AI-provider test suite (local Phase 3 shims used for the reconstructed workspace), real IdP/SSO/MFA, live PostgreSQL, Docker/Streamlit browser, dependency lock/Ruff and external security review. Production gate remains CLOSED. No GitHub runners.
+**Status (2026-10-20):** Phases 0–8 are implemented on `main`, and the previously unverified local verification has been completed against a **clean Python 3.12 checkout**: a committed `uv.lock` resolves the dependency set, `ruff check` and `ruff format --check` are clean repo-wide, the suite passes (**148 tests**, plus 16 opt-in PostgreSQL drill tests), `alembic upgrade head` on a fresh database reports **no schema drift**, the evaluation corpus has grown to **31 synthetic cases** with a **0-of-20 false-positive AI-recommendation rate**, the Docker/Compose deployment **builds, boots and serves**, and a **real PostgreSQL 16** instance has been exercised for migrations, optimistic concurrency, row locking, atomic rate limiting and a `pg_dump`/`pg_restore` round-trip. Policy moved to **`rules-v2`**, which requires an observed language-oriented signal before a task may be called a strong AI candidate (ADR-0009).
+
+**Still not verified, and unchanged in substance:** a real IdP/SSO/MFA session, privacy/DPIA/residency and provider-governance approval, encrypted off-site backup with a measured RPO/RTO, managed TLS/WAF ingress, external monitoring, vulnerability scanning, an independent penetration test, a named release approver, field-quality evaluation against real assessments, and browser-level SSO/CSRF end-to-end testing. **The production gate remains CLOSED** and `ADVISORY_DEPLOYMENT_MODE=production` still refuses to boot. No GitHub-hosted runners are used or enabled.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -40,25 +42,31 @@ Build a decision-support application for a Forward Deployed Engineer (FDE) to:
 
 ## 2. Scope and release boundaries
 
+> **Reconciled 2026-10-20.** The checkboxes below were written as a scope statement before any
+> code existed and were never updated as the phases landed. They are now marked against the
+> delivered code. A checked box here means *the capability exists in this repository*; it does
+> **not** mean the capability is approved for production use, and it does not close any §10
+> release gate.
+
 ### MVP / required
-- [ ] Assessment creation, editing, listing, and workflow status.
-- [ ] Structured intake and conditional, guided discovery questions.
-- [ ] Workflow builder with ordered steps and input/output/owner/system metadata.
-- [ ] Per-step task decomposition, initially manual with AI suggestions later.
-- [ ] Fact / assumption / unknown / contradiction / evidence tracking.
-- [ ] Versioned deterministic policy checks and reproducible explainable scoring.
-- [ ] AI suitability, business value, technical feasibility, data readiness, risk, measurability, and recommendation results, with incomplete-data indicators.
-- [ ] Six recommendation categories: traditional software; strong AI candidate; hybrid; AI + human approval; human-led / do not automate; more discovery required.
-- [ ] Risk flags, required controls, and an explicit approval matrix.
-- [ ] Optional structured AI discovery and analysis with a useful rules-only fallback.
-- [ ] FDE challenge/review, reasoned overrides, and final human decision.
-- [ ] Full Markdown or HTML assessment report export with evidence and caveats.
+- [x] Assessment creation, editing, listing, and workflow status.
+- [x] Structured intake and conditional, guided discovery questions.
+- [x] Workflow builder with ordered steps and input/output/owner/system metadata.
+- [x] Per-step task decomposition, initially manual with AI suggestions later.
+- [x] Fact / assumption / unknown / contradiction / evidence tracking.
+- [x] Versioned deterministic policy checks and reproducible explainable scoring.
+- [x] AI suitability, business value, technical feasibility, data readiness, risk, measurability, and recommendation results, with incomplete-data indicators. *Measurability is surfaced through the `clear_kpi` signal and the evaluation/PoC proposals in the report, not as a separately scored dimension.*
+- [x] Six recommendation categories: traditional software; strong AI candidate; hybrid; AI + human approval; human-led / do not automate; more discovery required.
+- [x] Risk flags, required controls, and an explicit approval matrix. *The three-stage approval chain is Phase 7; the action-category policy matrix is in `app/services/rule_engine.py`.*
+- [x] Optional structured AI discovery and analysis with a useful rules-only fallback.
+- [x] FDE challenge/review, reasoned overrides, and final human decision.
+- [x] Full Markdown or HTML assessment report export with evidence and caveats.
 
 ### If MVP is stable / next release
-- [ ] Architecture-pattern diagrams and detailed PoC planning.
-- [ ] KPI and evaluation-case suggestions, comparison of assessments.
-- [ ] Richer multi-assessment dashboard and configurable scoring weights.
-- [ ] PDF export and more polished reports.
+- [ ] Architecture-pattern diagrams and detailed PoC planning. *Partially delivered: the report carries a deterministic "simplest adequate starting pattern" table per task and Phase 8 adds PoC plans with KPI targets. **Diagrams** are not delivered.*
+- [x] KPI and evaluation-case suggestions, comparison of assessments. *Phase 8: revision-bound PoC KPI observations and the cross-assessment portfolio view.*
+- [ ] Richer multi-assessment dashboard and configurable scoring weights. *Partially delivered: the Phase 7 organization dashboard and Phase 8 portfolio dashboard exist. **Configurable** scoring weights are not implemented — the weights are a versioned constant in `app/services/scoring.py`.*
+- [ ] PDF export and more polished reports. *Not delivered; explicitly deferred. The HTML report can be printed to PDF by the operator, but that is not a validated PDF pipeline.*
 
 ### Later / explicitly not MVP
 - [ ] Organization-wide prioritization, external CRM/ERP connectors, automated ingestion, enterprise SSO, multi-FDE collaboration, historic benchmarks, agentic execution, and real-world transactional actions.
@@ -245,7 +253,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 ### Phase 0 — Repository and technical foundation (days 1–2)
 - [x] P0-01 Copy/normalize the uploaded blueprint into docs/blueprint.md for in-repo reference; preserve attribution to original uploaded document and version.
 - [x] P0-02 Replace placeholder README with scope, architecture, safety principle, local start, development workflow, and feature status.
-- [ ] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control. **Partially complete:** packaging/tests, `.gitignore`, `.env.example`, Ruff config committed; resolved transitive lock and Ruff run pending offline dependency availability.
+- [x] P0-03 Initialize Python project and dependency lock, package modules, Ruff, pytest, .gitignore, .env.example; keep secrets out of version control. **Verified 2026-10-20:** a `uv.lock` resolved against CPython 3.12 is committed (60 packages); `uv sync --extra dev --extra postgres` reproduces the environment; `ruff check .` and `ruff format --check .` are clean repo-wide (0 findings, 102 files formatted) with the FastAPI `Depends()` idiom and pytest fixture shadowing configured as intentional per-file ignores; `python -m pytest -q` passes 148 tests. The Docker image installs from the same lock with `uv sync --locked`, so a pyproject/lock mismatch fails the build.
 - [x] P0-04 Add FastAPI health endpoint, Streamlit smoke page and local run/test commands. **Owner-directed change:** remove GitHub-hosted CI workflow; use local tests instead.
 - [x] P0-05 Record architecture ADR (Streamlit/FastAPI/SQLite initially; modular monolith; optional LLM); write a short threat-model draft.
 
@@ -290,7 +298,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 ### Phase 4 — Reports, evaluation, and demo (days 22–27)
 - [x] P4-01 Build comprehensive Markdown/HTML assessment report (executive summary, workflow, decomposition, scores, assumptions/evidence, risks, AI/non-AI boundaries, architecture, evaluation, PoC, open questions, final FDE decision).
 - [x] P4-02 Add report export UI; PDF optional after the report content is correct.
-- [ ] P4-03 Add evaluation dataset, gold expectations, outcome metrics and regression runner; measure decision quality and unknown-data handling. **Partial:** four synthetic golden cases and CLI regression runner pass, including unknown ROI; representative field-quality and outcome metrics still require a validated dataset/pilot.
+- [x] P4-03 Add evaluation dataset, gold expectations, outcome metrics and regression runner; measure decision quality and unknown-data handling. **Verified 2026-10-20:** the corpus grew from 4 to **31 synthetic cases** (`dataset_version` 5.1) covering every branch of the recommendation precedence and all 13 rule ids, with each of the six categories exercised at least twice. `python -m app.evaluation` now reports per-category accuracy, a 6×6 confusion matrix, a **false-positive AI-recommendation rate of 0 of 20 non-AI cases**, an unknown-data handling rate of 31/31 (ROI 30/30, feasibility 23/23), per-rule firing rates and advisory-only compliance. The corpus also exposed a real policy defect — a pure system-of-record lookup was recommended as a strong AI candidate — which is fixed in **`rules-v2`** (ADR-0009). **Remaining, tracked under P8-09:** calibration and outcome quality against *real* field assessments still require a consented pilot; a 0.0 false-positive rate over hand-written synthetic cases is a regression guard, not evidence of real-world accuracy.
 - [x] P4-04 Add snapshot/golden tests for reports, deterministic verdict explanations and status/override history.
 - [x] P4-05 Add Dockerfile and Compose local deployment; verify migrations, health and startup with no AI key. **Verified 2026-10-19 (Docker Engine 29.8.2 / Compose v5.6.0, local synthetic demo only):** the image is built from the committed `uv.lock` via `uv sync --locked`, runs as non-root uid 10001 with a read-only rootfs, `cap_drop ALL` and `no-new-privileges`, and embeds no secret. `docker compose build` + `up -d` bring up the API and the Streamlit UI on loopback only; Alembic applies 0001→0008 at container start against a fresh named volume, `GET /health`, `/ready` and `/openapi.json` return 200, the compose healthchecks report healthy, `ADVISORY_AI_ENABLED=0` with no AI key present and the AI routes answer 503, and a full synthetic create→map→analyze→report flow passes (`python -m scripts.docker_smoke`). `docker compose down -v` followed by `up -d` re-migrates from an empty volume. The production startup guard still refuses to boot (`RuntimeError: Production deployment blocked…`). Caveats: the run used alternate loopback host ports (18000/18501) because another local process held 8000/8501, and browser-level UI verification, PostgreSQL-in-container, image scanning and load/TLS testing remain unverified. A schema-drift item found during the same run (`alembic check` reported `FLOAT`→`Double` on `answers.confidence`) was **fixed on 2026-10-19** by declaring the column type explicitly in `app/db/models.py`; no schema change was needed and `tests/test_alembic_drift.py` now enforces the gate.
 - [x] P4-06 Run and document three complete demos (AI / non-AI / hybrid) showing an FDE decision and export.
@@ -301,7 +309,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 ### Phase 5 — Production-readiness gate (days 28–30 for assessment; hardening may take longer)
 - [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route. **Partial:** API credentials, RBAC, tenant checks and credential-bound review logs done; independent IdP/SSO/MFA/membership lifecycle pending. **Additional implementation 2026-10-13:** OIDC signed JWTs use pinned issuer/audience/JWKS and locally provisioned organization membership; OIDC-only mode available. Real IdP and MFA integration and full merged auth tests remain unverified.
 - [ ] P5-02 Confirm external-model policy, privacy, residency, deletion, retention, safe logging and model-provider configuration. **Partial:** provider permission checks retained and secrets not logged; actual DPIA/DLP, residency, contract, retention and deletion workflows pending. **Additional:** offline scoped hard-deletion command (dry-run default) and SQLite online backup. Policy, consent, data residency, legal hold and backup expiry still need independent sign-off.
-- [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery. **Partial:** SQLAlchemy supports PostgreSQL via optional psycopg dependency; SQLite migration/drift tests pass. PostgreSQL instance, backup/restore and load tests unverified. **Additional:** migration 0005 adds OIDC membership and persistent limiter tables; local SQLite migration through head and drift check passed. PostgreSQL drill still pending.
+- [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery. **Local drill verified 2026-10-20:** against a real `postgres:16-alpine` instance the full 0001→0008 migration chain applies to an empty database with `alembic check` reporting no drift and round-trips through `downgrade base`; optimistic locking yields exactly one winner and a 409 on the losing concurrent HTTP write; `If-Match` returns 428/412/200; `SELECT … FOR UPDATE` verifiably blocks a second writer (which SQLite cannot demonstrate); the rate limiter's `ON CONFLICT DO UPDATE` is atomic under 24 parallel writers; and `pg_dump` → `pg_restore` into a second independent container reproduced identical row counts on 12 key tables with the same API reads. Six concrete index findings from the live catalogue are recorded and being addressed. **Still open for production:** a managed cluster with TLS/`verify-full` and least-privilege accounts, encrypted off-site backups with PITR, retention/rotation/legal-hold, capacity and load testing, failover, a backend-parametrised test suite (the pre-existing tests were SQLite-bound), and failure-recovery drills. The local drill's 0.25 s dump/restore is **not** an RPO/RTO measurement.
 - [ ] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content. **Partial:** sanitized JSON route/status/latency/request-ID logging and response headers added. Alerting/metrics dashboards and provider-spend monitoring pending. **Existing:** request logs are sanitized; externally operated dashboards/alerts and provider spending controls pending.
 - [ ] P5-05 Add security checks for injection, untrusted evidence, prompt injection, secrets, rate limits and dependency vulnerabilities. **Partial:** cross-tenant, revoked/expired, forged-token, impersonated reviewer, role and report security tests added; distributed rate limiting, pen test and dependency scanner pending. **Additional:** atomic per-principal SQL request limiting and JWT negative tests added; unauthenticated ingress/WAF limits, scans, DLP and penetration testing pending.
 - [ ] P5-06 Publish deployment/runbook, evidence-based limitations, known risks and rollback plan. **Partial:** operator runbook and ADR-0005 document credential rotation, containment and rollback/backup plans; no operational drill completed. **Additional:** operator OIDC/membership, backup and retention commands and explicit production startup guard are documented; real incident/restore drills pending.
@@ -311,21 +319,26 @@ Each checkbox is a trackable task; update this section as implementation progres
 
 ## 11. MVP definition of done — release gate
 
+> **Reconciled 2026-10-20.** These boxes were never ticked as the phases landed. They are now
+> marked against the delivered code. The last item is deliberately **unchecked**: the MVP
+> *capability* is delivered and demonstrable, but the production-readiness gate is NOT, and a
+> checked "definition of done" must never be read as release authorisation.
+
 An FDE can, using the app and not manual DB edits:
-- [ ] Create and resume an assessment with an identified owner and business problem.
-- [ ] Map workflow steps and atomic tasks.
-- [ ] Answer conditional questions and see evidence provenance.
-- [ ] See missing information and unresolved assumptions/contradictions.
-- [ ] Receive per-task, explainable AI/non-AI/hybrid/human recommendations and factor scores.
-- [ ] See explicit risks, policy flags, verification and approval controls.
-- [ ] Review a simplest-adequate architecture and a testable PoC/evaluation plan.
-- [ ] Challenge an AI recommendation, review supporting evidence, and compare simpler solutions.
-- [ ] Override advisory results with rationale, without bypassing non-overridable safeguards.
-- [ ] Sign and store a final FDE decision; no system-initiated production approval occurs.
-- [ ] Export a truthful assessment report with facts/estimates/assumptions labeled.
-- [ ] Demonstrate case A (AI), B (deterministic) and C (hybrid) with passing tests.
-- [ ] Run offline, without AI provider credentials, and pass CI from a clean clone.
-- [ ] For any production use: auth, RBAC, tenant separation, privacy, retention, audit, backup and security checks completed.
+- [x] Create and resume an assessment with an identified owner and business problem.
+- [x] Map workflow steps and atomic tasks.
+- [x] Answer conditional questions and see evidence provenance.
+- [x] See missing information and unresolved assumptions/contradictions.
+- [x] Receive per-task, explainable AI/non-AI/hybrid/human recommendations and factor scores.
+- [x] See explicit risks, policy flags, verification and approval controls.
+- [x] Review a simplest-adequate architecture and a testable PoC/evaluation plan.
+- [x] Challenge an AI recommendation, review supporting evidence, and compare simpler solutions.
+- [x] Override advisory results with rationale, without bypassing non-overridable safeguards.
+- [x] Sign and store a final FDE decision; no system-initiated production approval occurs.
+- [x] Export a truthful assessment report with facts/estimates/assumptions labeled.
+- [x] Demonstrate case A (AI), B (deterministic) and C (hybrid) with passing tests. *`python -m scripts.demo` and the 31-case evaluation corpus cover all three, plus the false-positive and unknown-data regressions.*
+- [x] Run offline, without AI provider credentials, and pass CI from a clean clone. *The suite runs offline with no provider key and passes from a clean clone. Hosted CI is absent by owner direction; documented local runs replace it.*
+- [ ] For any production use: auth, RBAC, tenant separation, privacy, retention, audit, backup and security checks completed. **STILL OPEN.** Auth, RBAC, tenant separation, audit and backup exist in code, but real IdP/MFA, privacy and residency sign-off, encrypted off-site backup, vulnerability scanning, penetration testing and a named release approver do not. See P5-01…P5-07, P6-06…P6-09 and P7-08…P7-11.
 
 ## 12. Project risks and mitigation
 
@@ -385,6 +398,11 @@ The application code is consolidated on the repository's `main` branch; no PR or
 **External work remaining (production gate CLOSED):**
 - [ ] P6-06 Run full merged tests, lint and dependency lock verification, and
   authenticated browser SSO/MFA/CSRF tests on the *actual* integrated deployment.
+  **Local half verified 2026-10-20:** the full merged suite passes on Python 3.12
+  (148 tests), `ruff check` and `ruff format --check` are clean repo-wide, the
+  dependency lock is committed and reproduced by both `uv sync` and the Docker
+  build, and the migration chain applies with no drift. **Still open:** authenticated
+  browser SSO/MFA/CSRF testing against a real IdP on the integrated deployment.
 - [ ] P6-07 Test production PostgreSQL isolation, concurrent writes, schema
   upgrades, load, off-site encrypted backups and timed restore (RPO/RTO).
 - [ ] P6-08 Provision edge TLS/WAF, metrics/alerts, managed secrets, vulnerability
@@ -416,6 +434,10 @@ independently attested to by a source-code commit.
 
 **Remaining / outside this source-only increment:**
 - [ ] P7-08 Execute complete integrated tests, migration/lint and actual browser
+  E2E against an operator-controlled OIDC/PostgreSQL environment.
+  **Local half verified 2026-10-20:** the complete integrated suite passes (148
+  tests) with clean lint/format and a drift-free migration chain, and 16 opt-in
+  tests pass against a real PostgreSQL 16 instance. **Still open:** actual browser
   E2E against an operator-controlled OIDC/PostgreSQL environment.
 - [ ] P7-09 Verified real IdP session lifecycle, SCIM, fine-grained security team
   role/approval policies and safe user-facing enterprise login.
@@ -452,6 +474,11 @@ addressing high-risk verification gaps for any real customer data.
 **Unverified / future production acceptance:**
 - [ ] P8-08 Execute the full integrated test suite, Alembic drift/lint and
   authenticated UI/DB load scenarios in a controlled environment.
+  **Local half verified 2026-10-20:** the full integrated suite passes (148 tests),
+  `ruff check`/`ruff format --check` are clean, and `alembic check` reports no drift
+  against a database built from the migration chain alone (now enforced by
+  `tests/test_alembic_drift.py`). **Still open:** authenticated UI and DB load
+  scenarios in a controlled environment.
 - [ ] P8-09 Collect privacy-approved, representative field assessments,
   blinded expert outcomes and PoC samples to calibrate ranking and verify
   forecast accuracy, false-positive decisions and business impact.
