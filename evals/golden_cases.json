@@ -1,20 +1,31 @@
 {
-  "dataset_version": "4.0",
-  "description": "Synthetic hand-authored contrastive assessments, not real-world calibration.",
+  "dataset_version": "5.0",
+  "description": "Synthetic hand-authored contrastive assessments. These are golden policy expectations for regression detection only: not a representative sample, not field accuracy, not model quality, not evidence of ROI, and not a safety assurance.",
+  "provenance": "Every case is invented for this repository. No customer data, no production logs, no external benchmark, no model outputs. Expected categories were written from the published policy precedence and then confirmed against the deterministic engine.",
+  "core_case_ids": [
+    "ai-support",
+    "exact-pricing",
+    "hybrid-refund",
+    "privacy-blocked"
+  ],
+  "core_case_note": "The four original contrastive fixtures are kept as a small core regression set. scope='core' evaluates only these; scope='full' (the CLI default) evaluates every case in this file.",
   "cases": [
     {
       "id": "ai-support",
+      "invariant": "Verifiable triage stays a bounded AI PoC",
+      "provenance": "Synthetic: original contrastive fixture, retained unchanged. Rationale: language-oriented triage with verifiable outputs and a reviewer path is a bounded AI PoC candidate.",
       "scenario": {
         "title": "Knowledge-base support triage",
         "steps": [
           {
             "id": "s1",
-            "name": "Classify customer ticket",
+            "name": "Synthetic workflow step",
             "order": 1,
             "tasks": [
               {
                 "id": "t1",
                 "title": "Extract intent and route ticket",
+                "description": "Synthetic evaluation fixture.",
                 "signals": {
                   "unstructured_content": true,
                   "classification_or_extraction": true,
@@ -37,22 +48,25 @@
         ]
       },
       "expected_category": "strong_ai_candidate",
-      "expected_controls": false,
+      "expect_controls": true,
       "expect_roi_missing": true
     },
     {
       "id": "exact-pricing",
+      "invariant": "Exact arithmetic stays deterministic",
+      "provenance": "Synthetic: original contrastive fixture, retained unchanged. Rationale: an expressible formula with exact arithmetic belongs in deterministic code, not an LLM.",
       "scenario": {
         "title": "Exact pricing calculation",
         "steps": [
           {
             "id": "s1",
-            "name": "Compute fee",
+            "name": "Synthetic workflow step",
             "order": 1,
             "tasks": [
               {
                 "id": "t1",
                 "title": "Apply shipping and tax rules",
+                "description": "Synthetic evaluation fixture.",
                 "decision_type": "deterministic",
                 "signals": {
                   "deterministic_rules": true,
@@ -67,26 +81,26 @@
         ]
       },
       "expected_category": "traditional_software",
-      "expected_controls": false,
+      "expect_controls": false,
       "expect_roi_missing": true
     },
     {
       "id": "hybrid-refund",
+      "invariant": "Irreversible consequential action keeps a human approval gate",
+      "provenance": "Synthetic: original contrastive fixture, retained unchanged. Rationale: an irreversible, consequential action keeps a mandatory human approval gate on any AI suggestion.",
       "scenario": {
         "title": "Refund email workflow",
         "steps": [
           {
             "id": "s1",
-            "name": "Review refund",
+            "name": "Synthetic workflow step",
             "order": 1,
             "tasks": [
               {
                 "id": "t1",
                 "title": "Extract request and prepare refund recommendation",
+                "description": "Synthetic evaluation fixture.",
                 "decision_type": "mixed",
-                "actions": [
-                  "issue_refund"
-                ],
                 "signals": {
                   "unstructured_content": true,
                   "classification_or_extraction": true,
@@ -97,6 +111,9 @@
                   "data_available": true,
                   "output_verifiable": true
                 },
+                "actions": [
+                  "issue_refund"
+                ],
                 "risks": [
                   {
                     "category": "business",
@@ -111,22 +128,28 @@
         ]
       },
       "expected_category": "ai_human_approval",
-      "expected_controls": true,
-      "expect_roi_missing": true
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "ACT-002"
+      ]
     },
     {
       "id": "privacy-blocked",
+      "invariant": "PRIV-001 blocks external provider processing",
+      "provenance": "Synthetic: original contrastive fixture, retained unchanged. Rationale: sensitive material without proven provider permission must not be sent to an external model (PRIV-001).",
       "scenario": {
         "title": "Sensitive data without provider permission",
         "steps": [
           {
-            "id": "s-priv",
-            "name": "Classify sensitive ticket",
+            "id": "s1",
+            "name": "Synthetic workflow step",
             "order": 1,
             "tasks": [
               {
                 "id": "t-priv",
                 "title": "Classify confidential customer note",
+                "description": "Synthetic evaluation fixture.",
                 "signals": {
                   "unstructured_content": true,
                   "classification_or_extraction": true,
@@ -134,6 +157,751 @@
                   "output_verifiable": true,
                   "sensitive_data": true,
                   "provider_data_permitted": false
+                },
+                "risks": [
+                  {
+                    "category": "privacy",
+                    "description": "Confidential note reaches an external model",
+                    "impact": 3,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "PRIV-001"
+      ]
+    },
+    {
+      "id": "employment-screening",
+      "invariant": "HUM-001: the final hiring decision stays with a human",
+      "provenance": "Synthetic: hand-authored false-positive guard. Rationale: a high-volume, well-scored classification task must still stay human-led because the final employment decision is reserved for an accountable professional (HUM-001).",
+      "scenario": {
+        "title": "Shortlist screening for hiring panel",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Extract CV evidence against the job criteria",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "output_verifiable": true,
+                  "data_available": true,
+                  "human_review_available": true,
+                  "clear_kpi": true
+                },
+                "actions": [
+                  "employment_decision"
+                ],
+                "risks": [
+                  {
+                    "category": "legal",
+                    "description": "Unlawful or biased hiring decision",
+                    "impact": 5,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "HUM-001"
+      ],
+      "false_positive_guard": true
+    },
+    {
+      "id": "medical-triage-draft",
+      "invariant": "HUM-001: the clinical decision stays with a human",
+      "provenance": "Synthetic: hand-authored. Rationale: drafting clinical triage notes may use AI, but the medical decision itself is human-only (HUM-001).",
+      "scenario": {
+        "title": "Clinical intake note drafting",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Summarise intake notes for the clinician",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "natural_language_generation": true,
+                  "slow_manual_task": true,
+                  "data_available": true,
+                  "human_review_available": true
+                },
+                "actions": [
+                  "medical_decision"
+                ],
+                "risks": [
+                  {
+                    "category": "safety",
+                    "description": "Clinical guidance relied on without a clinician",
+                    "impact": 5,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "HUM-001"
+      ],
+      "false_positive_guard": true
+    },
+    {
+      "id": "legal-commitment-review",
+      "invariant": "HUM-001: the binding commitment stays with counsel",
+      "provenance": "Synthetic: hand-authored. Rationale: a binding legal commitment is reserved for counsel; AI may only prepare the summary (HUM-001).",
+      "scenario": {
+        "title": "Contract renewal options summary",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Summarise renewal clauses for legal review",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "actions": [
+                  "legal_commitment"
+                ],
+                "risks": [
+                  {
+                    "category": "legal",
+                    "description": "Binding commitment made without counsel",
+                    "impact": 5,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "HUM-001"
+      ],
+      "false_positive_guard": true
+    },
+    {
+      "id": "zero-error-payout",
+      "invariant": "SAFE-001: no automation without verification or a reviewer",
+      "provenance": "Synthetic: hand-authored. Rationale: zero-error tolerance without an independent verification method and without a reviewer cannot be automated (SAFE-001).",
+      "scenario": {
+        "title": "Bonus payout eligibility calculation",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Decide payout eligibility from policy text",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "zero_error_tolerance": true,
+                  "output_verifiable": false,
+                  "human_review_available": false
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Incorrect payout accepted without verification",
+                    "impact": 4,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "SAFE-001"
+      ],
+      "false_positive_guard": true
+    },
+    {
+      "id": "high-consequence-no-reviewer",
+      "invariant": "High consequence without any reviewer is human-led",
+      "provenance": "Synthetic: hand-authored. Rationale: a high-consequence decision with no available human reviewer must not be delegated to an automatic action.",
+      "scenario": {
+        "title": "Escalate disputed account closure",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Recommend account closure outcome",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "high_consequence": true,
+                  "human_review_available": false
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Unreviewed consequential decision",
+                    "impact": 3,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "false_positive_guard": true
+    },
+    {
+      "id": "critical-risk-no-reviewer",
+      "invariant": "A critical risk score without a reviewer is human-led",
+      "provenance": "Synthetic: hand-authored. Rationale: a critical risk score (20) without an available reviewer cannot be delegated; the human keeps the decision.",
+      "scenario": {
+        "title": "Fraud alert disposition",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Recommend disposition of a fraud alert",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "high_consequence": false,
+                  "human_review_available": false
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Unmitigated critical exposure",
+                    "impact": 5,
+                    "likelihood": 4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "false_positive_guard": true
+    },
+    {
+      "id": "value-below-threshold",
+      "invariant": "VALUE-001: below-threshold evidenced value is human-led",
+      "provenance": "Synthetic: hand-authored false-positive guard. Rationale: the workflow looks highly AI-suitable on signals, but the evidenced net value is below the stated threshold, so the decision is human-led rather than an AI project (VALUE-001).",
+      "scenario": {
+        "title": "Low-value document tagging pilot",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Tag inbound documents",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Tag supplier documents by category",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "high_consequence": false
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Mislabelled document",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "value_inputs": {
+          "cases_per_period": "100",
+          "baseline_minutes_per_case": "12",
+          "target_minutes_per_case": "10",
+          "loaded_hourly_cost": "40",
+          "proposed_operating_cost_per_period": "50",
+          "period": "month"
+        },
+        "minimum_net_value_per_period": "500"
+      },
+      "expected_category": "human_led",
+      "expect_controls": true,
+      "expect_roi_missing": false,
+      "expected_rule_ids": [
+        "VALUE-001"
+      ],
+      "expect_roi_available": true,
+      "false_positive_guard": true
+    },
+    {
+      "id": "safe-rule-with-reviewer",
+      "invariant": "SAFE-001 with a reviewer is approval-gated AI",
+      "provenance": "Synthetic: hand-authored. Rationale: SAFE-001 still raises a mandatory control, but because a reviewer is available the outcome is an approval-gated AI suggestion, not human-led.",
+      "scenario": {
+        "title": "Statutory filing answer drafting",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Draft the answer to a statutory filing question",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": false,
+                  "zero_error_tolerance": true,
+                  "high_consequence": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "safety",
+                    "description": "Automated answer without verification",
+                    "impact": 4,
+                    "likelihood": 4
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "ai_human_approval",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "SAFE-001"
+      ]
+    },
+    {
+      "id": "approval-required-no-approver",
+      "invariant": "ACT-002 without a confirmed approver needs discovery",
+      "provenance": "Synthetic: hand-authored. Rationale: an approval-required business action with no confirmed approver cannot be classified yet; the missing approval policy must be established.",
+      "scenario": {
+        "title": "Cancel an order on a disputed invoice",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Prepare the order cancellation request",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "mixed",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "api_available": true,
+                  "high_consequence": false,
+                  "human_review_available": null
+                },
+                "actions": [
+                  "cancel_order"
+                ],
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Order cancelled without an authorised approver",
+                    "impact": 4,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "ACT-002"
+      ]
+    },
+    {
+      "id": "approval-required-with-approver",
+      "invariant": "ACT-002 with an approver is approval-gated AI",
+      "provenance": "Synthetic: hand-authored. Rationale: an approval-required record change with a named reviewer stays an AI suggestion gated by human approval (ACT-002).",
+      "scenario": {
+        "title": "Update a customer address after a call",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Extract the new address and propose the record change",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "mixed",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "api_available": true,
+                  "high_consequence": false,
+                  "human_review_available": true
+                },
+                "actions": [
+                  "modify_customer_record"
+                ],
+                "risks": [
+                  {
+                    "category": "privacy",
+                    "description": "Incorrect customer record change",
+                    "impact": 3,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "ai_human_approval",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "ACT-002"
+      ]
+    },
+    {
+      "id": "irreversible-data-deletion",
+      "invariant": "ACT-001/ACT-002: irreversible action needs approval",
+      "provenance": "Synthetic: hand-authored. Rationale: an irreversible, consequential action always requires an approval gate and audit trail (ACT-001, ACT-002).",
+      "scenario": {
+        "title": "Delete customer data on a retention request",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Identify and delete the records covered by a retention request",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "requires_authoritative_lookup": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "high_consequence": true,
+                  "action_irreversible": true
+                },
+                "actions": [
+                  "delete_data"
+                ],
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Irreversible deletion of the wrong records",
+                    "impact": 5,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "ai_human_approval",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "ACT-001",
+        "ACT-002"
+      ]
+    },
+    {
+      "id": "contract-redline-draft",
+      "invariant": "High-consequence drafting stays approval-gated",
+      "provenance": "Synthetic: hand-authored. Rationale: drafting contract language is AI-suitable, but the consequence of a wrong draft is high, so the recommendation stays approval-gated.",
+      "scenario": {
+        "title": "Draft a contract redline proposal",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Draft a redline for the commercial term change",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "judgment",
+                "signals": {
+                  "unstructured_content": true,
+                  "natural_language_generation": true,
+                  "slow_manual_task": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "high_consequence": true
+                },
+                "actions": [
+                  "draft"
+                ],
+                "risks": [
+                  {
+                    "category": "legal",
+                    "description": "Contract language sent without legal review",
+                    "impact": 4,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "ai_human_approval",
+      "expect_controls": true,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "data-permission-missing",
+      "invariant": "PRIV-002: no data permission blocks processing",
+      "provenance": "Synthetic: hand-authored. Rationale: without permission to use the data the workflow may not be processed at all (PRIV-002).",
+      "scenario": {
+        "title": "Score inbound job applications",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Classify the applications against the shortlist criteria",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "permission_to_use_data": false
+                },
+                "risks": [
+                  {
+                    "category": "privacy",
+                    "description": "Processing data without authority",
+                    "impact": 4,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "PRIV-002"
+      ]
+    },
+    {
+      "id": "sensitive-data-provider-unknown",
+      "invariant": "PRIV-001: unconfirmed provider permission blocks",
+      "provenance": "Synthetic: hand-authored. Rationale: sensitive material with unconfirmed provider permission is blocked from external model processing (PRIV-001).",
+      "scenario": {
+        "title": "Summarise a confidential case note",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Summarise a confidential client note for the case file",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "sensitive_data": true,
+                  "provider_data_permitted": null,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "privacy",
+                    "description": "Confidential note could reach an external model",
+                    "impact": 4,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "PRIV-001"
+      ]
+    },
+    {
+      "id": "reviewer-availability-unknown",
+      "invariant": "EVID-001: unknown reviewer availability blocks",
+      "provenance": "Synthetic: hand-authored. Rationale: a consequential step whose reviewer availability is unknown must be resolved before any recommendation (EVID-001).",
+      "scenario": {
+        "title": "Approve a large credit exception",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Recommend a credit exception decision",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "high_consequence": true,
+                  "human_review_available": null
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Consequential step without a named approver",
+                    "impact": 4,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "EVID-001"
+      ]
+    },
+    {
+      "id": "insufficient-evidence-unknown-inputs",
+      "invariant": "EVID-002: unknown inputs need discovery",
+      "provenance": "Synthetic: hand-authored. Rationale: nothing is known about the task inputs, so no AI design can be defended yet (EVID-002).",
+      "scenario": {
+        "title": "Unspecified internal workflow step",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Perform an unspecified internal review step",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "unknown",
+                "signals": {
+                  "zero_error_tolerance": null
                 }
               }
             ]
@@ -141,9 +909,497 @@
         ]
       },
       "expected_category": "more_discovery",
-      "expected_controls": true,
+      "expect_controls": false,
       "expect_roi_missing": true,
-      "required_rule": "PRIV-001"
+      "expected_rule_ids": [
+        "EVID-002"
+      ]
+    },
+    {
+      "id": "no-reliable-data",
+      "invariant": "EVID-003: unreliable data needs discovery",
+      "provenance": "Synthetic: hand-authored. Rationale: without reliable task data no AI design is defensible (EVID-003).",
+      "scenario": {
+        "title": "Classify legacy scanned invoices",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Classify scanned invoices into expense categories",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": false,
+                  "no_reliable_data": true,
+                  "output_verifiable": false,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Unreliable inputs drive the workflow",
+                    "impact": 3,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "EVID-003"
+      ]
+    },
+    {
+      "id": "contradictory-data-claims",
+      "invariant": "Contradictory data claims need discovery first",
+      "provenance": "Synthetic: hand-authored. Rationale: intake answers contradict each other (the data is claimed to be available and simultaneously unreliable); the conflict must be resolved before any AI design is proposed (EVID-003). Contradiction detection itself is exercised against app.services.discovery in tests/test_evaluation_metrics.py.",
+      "scenario": {
+        "title": "Triage records with conflicting data statements",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Triage records for the outstanding review queue",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "data_available": true,
+                  "no_reliable_data": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Records triaged on contradictory data statements",
+                    "impact": 3,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "EVID-003"
+      ]
+    },
+    {
+      "id": "hybrid-authoritative-lookup",
+      "invariant": "Language plus authoritative facts is hybrid",
+      "provenance": "Synthetic: hand-authored. Rationale: language interpretation is AI-suitable but the facts must come from a validated system lookup, so the design is hybrid (DATA-001).",
+      "scenario": {
+        "title": "Draft a policy answer with system-of-record facts",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Draft the answer to a policy question using live entitlement data",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "natural_language_generation": true,
+                  "slow_manual_task": true,
+                  "requires_authoritative_lookup": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Draft cites the wrong policy clause",
+                    "impact": 3,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "hybrid",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "DATA-001"
+      ]
+    },
+    {
+      "id": "hybrid-contract-review",
+      "invariant": "Clause extraction with retrieval is hybrid",
+      "provenance": "Synthetic: hand-authored. Rationale: clause extraction over unstructured contracts, with the template retrieved from the system of record, is a hybrid design.",
+      "scenario": {
+        "title": "Compare a signed contract against the standard template",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Extract and compare clauses against the standard template",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "semantic_search": true,
+                  "requires_authoritative_lookup": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "legal",
+                    "description": "Clause misread against the signed template",
+                    "impact": 4,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "hybrid",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "DATA-001"
+      ]
+    },
+    {
+      "id": "authoritative-lookup-only",
+      "invariant": "A pure lookup is not an AI candidate (known discrepancy)",
+      "provenance": "Synthetic: hand-authored. Rationale: an authoritative lookup with no language work at all is an integration, not an AI candidate; more discovery is required.",
+      "scenario": {
+        "title": "Look up the current account tier",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Retrieve the current account tier from the billing system",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "requires_authoritative_lookup": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Wrong tier shown to the customer",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "DATA-001"
+      ],
+      "known_discrepancy": true,
+      "discrepancy_note": "KNOWN DISCREPANCY (documented engine finding, engine not modified): the STRONG_AI branch is reached by an aggregate suitability score >= 65 without requiring any language-oriented signal, although its own rationale says 'observed language-oriented signals'. A pure system-of-record lookup therefore lands in strong_ai_candidate, while the least-wrong category for a task with no interpretation work is more_discovery. Recorded as a false positive in the safety metric."
+    },
+    {
+      "id": "strong-ai-semantic-search",
+      "invariant": "Semantic retrieval with verification is a PoC",
+      "provenance": "Synthetic: hand-authored. Rationale: semantic retrieval over a curated knowledge base with verifiable answers and a reviewer path is a bounded AI PoC.",
+      "scenario": {
+        "title": "Answer agent questions from the knowledge base",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Answer the agent question from the internal knowledge base",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "semantic_search": true,
+                  "natural_language_generation": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Wrong policy surfaced to the agent",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "strong_ai_candidate",
+      "expect_controls": true,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "strong-ai-email-triage",
+      "invariant": "High-volume triage with verification is a PoC",
+      "provenance": "Synthetic: hand-authored. Rationale: high-volume inbound email triage with verifiable routing and a reviewer path is a bounded AI PoC.",
+      "scenario": {
+        "title": "Route inbound supplier email",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Classify and route inbound supplier email",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "slow_manual_task": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "clear_kpi": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Email routed to the wrong queue",
+                    "impact": 2,
+                    "likelihood": 3
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "strong_ai_candidate",
+      "expect_controls": true,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "missing-baseline-roi",
+      "invariant": "Bounded AI case, but ROI must stay unavailable",
+      "provenance": "Synthetic: hand-authored. Rationale: the automation itself is a bounded AI candidate, but the value baseline is not evidenced, so ROI must stay unavailable instead of being invented.",
+      "scenario": {
+        "title": "Inbound request triage",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Triage inbound requests",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Classify and route inbound customer requests",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "data_available": true,
+                  "output_verifiable": true,
+                  "human_review_available": true
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "Misrouted request",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "value_inputs": {
+          "cases_per_period": "250",
+          "loaded_hourly_cost": "45",
+          "period": "month"
+        }
+      },
+      "expected_category": "strong_ai_candidate",
+      "expect_controls": true,
+      "expect_roi_missing": true
+    },
+    {
+      "id": "ai-lookalike-no-benefit",
+      "invariant": "AI-shaped signals with no verifiable benefit",
+      "provenance": "Synthetic: hand-authored false-positive guard. Rationale: the signals look AI-shaped, but the data is not available, the volume is negligible and no KPI is defined, so there is no verifiable benefit to justify an AI design.",
+      "scenario": {
+        "title": "Ad-hoc tagging with no measurable outcome",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Tag a handful of internal notes each week",
+                "description": "Synthetic evaluation fixture.",
+                "signals": {
+                  "unstructured_content": true,
+                  "classification_or_extraction": true,
+                  "high_repetitive_volume": true,
+                  "very_low_volume": true,
+                  "data_available": false,
+                  "output_verifiable": true,
+                  "human_review_available": true,
+                  "clear_kpi": false
+                },
+                "risks": [
+                  {
+                    "category": "business",
+                    "description": "No measurable benefit to justify the change",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "more_discovery",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "false_positive_guard": true
+    },
+    {
+      "id": "deterministic-schedule",
+      "invariant": "DET-001: roster rules are deterministic software",
+      "provenance": "Synthetic: hand-authored. Rationale: a shift roster built from expressible rules is a deterministic software problem (DET-001).",
+      "scenario": {
+        "title": "Build the weekly shift roster",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Assign shifts from the published availability rules",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "deterministic",
+                "signals": {
+                  "deterministic_rules": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Schedule conflict",
+                    "impact": 2,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "traditional_software",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "DET-001"
+      ]
+    },
+    {
+      "id": "payroll-calculation",
+      "invariant": "DET-001/MATH-001: payroll arithmetic is deterministic",
+      "provenance": "Synthetic: hand-authored. Rationale: payroll arithmetic with exact figures belongs in typed code, not an LLM (DET-001, MATH-001).",
+      "scenario": {
+        "title": "Calculate monthly payroll amounts",
+        "steps": [
+          {
+            "id": "s1",
+            "name": "Synthetic workflow step",
+            "order": 1,
+            "tasks": [
+              {
+                "id": "t1",
+                "title": "Apply pay rates, overtime and statutory deductions",
+                "description": "Synthetic evaluation fixture.",
+                "decision_type": "deterministic",
+                "signals": {
+                  "deterministic_rules": true,
+                  "exact_math": true,
+                  "data_available": true,
+                  "api_available": true,
+                  "output_verifiable": true
+                },
+                "risks": [
+                  {
+                    "category": "operational",
+                    "description": "Incorrect pay amount",
+                    "impact": 3,
+                    "likelihood": 2
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected_category": "traditional_software",
+      "expect_controls": true,
+      "expect_roi_missing": true,
+      "expected_rule_ids": [
+        "DET-001",
+        "MATH-001"
+      ]
     }
   ]
 }

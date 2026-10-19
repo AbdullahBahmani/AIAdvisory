@@ -138,7 +138,7 @@ def test_ui_download_adapter_preserves_content_bytes_and_format():
 
 
 def test_offline_evaluation_and_expected_categories():
-    result = evaluate_dataset()
+    result = evaluate_dataset(scope="core")
     assert result["passed"] == result["total"] == 4
     assert result["failed"] == 0
     assert {x["id"]: x["actual"][0] for x in result["cases"]} == {
@@ -156,7 +156,7 @@ def test_regression_evaluation_returns_failure_for_wrong_ground_truth(tmp_path):
     data["cases"][0]["expected_category"] = "human_led"
     path = tmp_path / "bad-goldens.json"
     path.write_text(json.dumps(data))
-    result = evaluate_dataset(path)
+    result = evaluate_dataset(path, scope="core")
     assert result["failed"] == 1
     assert result["total"] == 4
 
