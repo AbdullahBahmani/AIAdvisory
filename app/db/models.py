@@ -3,7 +3,17 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -119,7 +129,10 @@ class AnswerRow(Base):
     value: Mapped[dict] = mapped_column(JSON)
     kind: Mapped[str] = mapped_column(String(24))
     source: Mapped[str | None] = mapped_column(String(200))
-    confidence: Mapped[float | None] = mapped_column()
+    # Declared explicitly: SQLAlchemy 2.1 infers DOUBLE for a bare Python float,
+    # while migration 0001 created FLOAT. Leaving it inferred made `alembic check`
+    # report schema drift on a clean database after an ORM upgrade.
+    confidence: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="answers")
 
