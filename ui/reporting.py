@@ -4,7 +4,14 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
-def fetch_report(base_url: str, assessment_id: str, format: str = "markdown", timeout: float = 12.0, *, bearer_token: str | None = None) -> bytes:
+def fetch_report(
+    base_url: str,
+    assessment_id: str,
+    format: str = "markdown",
+    timeout: float = 12.0,
+    *,
+    bearer_token: str | None = None,
+) -> bytes:
     if format not in ("markdown", "html"):
         raise ValueError("Report format must be markdown or html")
     if not assessment_id or any(c in assessment_id for c in "?#/\\"):
@@ -25,8 +32,13 @@ def fetch_report(base_url: str, assessment_id: str, format: str = "markdown", ti
 
 def render_report_tab(st, base_url: str, assessment: dict) -> None:
     st.subheader("Assessment report and export")
-    st.caption("Evidence-labeled snapshot of the current deterministic analysis and optional unverified AI suggestions. No rollout authorization.")
-    if assessment.get("analysis") is None or assessment.get("analysis_revision") != assessment.get("revision"):
+    st.caption(
+        "Evidence-labeled snapshot of the current deterministic analysis and optional "
+        "unverified AI suggestions. No rollout authorization."
+    )
+    if assessment.get("analysis") is None or assessment.get("analysis_revision") != assessment.get(
+        "revision"
+    ):
         st.warning("Run deterministic analysis for the current revision before exporting.")
         return
     assessment_id = assessment["id"]
@@ -37,9 +49,17 @@ def render_report_tab(st, base_url: str, assessment: dict) -> None:
     except (OSError, ValueError) as exc:
         st.error(f"Report retrieval failed: {exc}")
         return
-    st.download_button("Download Markdown report", data=markdown,
-                       file_name=f"assessment-{assessment_id}.md", mime="text/markdown")
-    st.download_button("Download HTML report", data=html,
-                       file_name=f"assessment-{assessment_id}.html", mime="text/html")
+    st.download_button(
+        "Download Markdown report",
+        data=markdown,
+        file_name=f"assessment-{assessment_id}.md",
+        mime="text/markdown",
+    )
+    st.download_button(
+        "Download HTML report",
+        data=html,
+        file_name=f"assessment-{assessment_id}.html",
+        mime="text/html",
+    )
     with st.expander("Preview report (Markdown)"):
         st.code(markdown.decode("utf-8"), language="markdown")

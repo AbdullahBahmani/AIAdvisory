@@ -44,8 +44,13 @@ def test_generic_api_adapter_sends_payload_and_reviewer_token():
 
     output = FakeResponse(json.dumps({"is_final": True}).encode())
     with patch("ui.streamlit_app.urlopen", return_value=output) as mocked:
-        assert api_request("http://127.0.0.1:8000", "POST", "/api/v1/assessments/abc/final-decision",
-                           {"note": "demo"}, reviewer_token="local-token") == {"is_final": True}
+        assert api_request(
+            "http://127.0.0.1:8000",
+            "POST",
+            "/api/v1/assessments/abc/final-decision",
+            {"note": "demo"},
+            reviewer_token="local-token",
+        ) == {"is_final": True}
     request = mocked.call_args.args[0]
     assert request.get_method() == "POST"
     assert request.get_header("X-reviewer-token") == "local-token"
@@ -70,11 +75,16 @@ def test_json_helpers_require_correct_shapes():
 
 def test_ai_ui_adapter_requires_attestation_and_does_not_write_edits():
     from ui.streamlit_app import request_ai_proposal
+
     with pytest.raises(ValueError, match="Explicit approval"):
         request_ai_proposal("http://127.0.0.1:8000", "a1", "discovery", approved=False)
-    fake = FakeResponse(json.dumps({"advisory_only": True, "proposal": {"question": "Why?"}}).encode())
+    fake = FakeResponse(
+        json.dumps({"advisory_only": True, "proposal": {"question": "Why?"}}).encode()
+    )
     with patch("ui.streamlit_app.urlopen", return_value=fake) as call:
-        out = request_ai_proposal("http://127.0.0.1:8000", "a1", "discovery", approved=True, access_token="local-secret")
+        out = request_ai_proposal(
+            "http://127.0.0.1:8000", "a1", "discovery", approved=True, access_token="local-secret"
+        )
     req = call.call_args.args[0]
     assert req.get_method() == "POST"
     assert req.full_url.endswith("/api/v1/assessments/a1/ai/discovery")
@@ -84,13 +94,18 @@ def test_ai_ui_adapter_requires_attestation_and_does_not_write_edits():
 
 
 def test_api_client_sends_current_assessment_revision_on_write():
-    from ui.streamlit_app import api_request, _ASSESSMENT_REVISION
+    from ui.streamlit_app import _ASSESSMENT_REVISION, api_request
+
     current = _ASSESSMENT_REVISION.set(8)
     try:
         response = FakeResponse(json.dumps({"revision": 9}).encode())
         with patch("ui.streamlit_app.urlopen", return_value=response) as mocked:
-            api_request("http://127.0.0.1:8000", "PATCH",
-                        "/api/v1/assessments/assessment-id", {"title": "New title"})
+            api_request(
+                "http://127.0.0.1:8000",
+                "PATCH",
+                "/api/v1/assessments/assessment-id",
+                {"title": "New title"},
+            )
         request = mocked.call_args.args[0]
         assert request.get_header("If-match") == '"8"'
     finally:
@@ -98,21 +113,28 @@ def test_api_client_sends_current_assessment_revision_on_write():
 
 
 def test_api_client_sends_revision_on_reviewer_assignment():
-    from ui.streamlit_app import api_request, _ASSESSMENT_REVISION
+    from ui.streamlit_app import _ASSESSMENT_REVISION, api_request
+
     current = _ASSESSMENT_REVISION.set(12)
     try:
         response = FakeResponse(json.dumps({"reviewer_subject": "fde"}).encode())
         with patch("ui.streamlit_app.urlopen", return_value=response) as mocked:
-            api_request("http://127.0.0.1:8000", "PUT",
-                        "/api/v1/assessments/abc/reviewer", {"reviewer_subject": "fde"})
+            api_request(
+                "http://127.0.0.1:8000",
+                "PUT",
+                "/api/v1/assessments/abc/reviewer",
+                {"reviewer_subject": "fde"},
+            )
         assert mocked.call_args.args[0].get_header("If-match") == '"12"'
     finally:
         _ASSESSMENT_REVISION.reset(current)
 
 
 def test_financial_ui_rejects_implicit_missing_numbers():
-    from ui.portfolio import _decimal
     import pytest
+
+    from ui.portfolio import _decimal
+
     assert _decimal("1.25", "Cost") == "1.25"
     for invalid in ("", "NaN", "-1", "Infinity", "not-a-number"):
         with pytest.raises(ValueError):

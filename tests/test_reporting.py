@@ -1,7 +1,7 @@
 """Report integration and safe rendering regression tests, no external services."""
 
-from io import BytesIO
 import json
+from io import BytesIO
 from unittest.mock import patch
 
 import pytest
@@ -20,8 +20,12 @@ def analyzed_id(client, title: str = "Report fixture") -> str:
     assessment = client.post("/api/v1/assessments", json={"title": title})
     assert assessment.status_code == 201
     aid = assessment.json()["id"]
-    add_workflow_task(client, aid, title="Determine refund amount",
-                      signals={"deterministic_rules": True, "exact_math": True, "output_verifiable": True})
+    add_workflow_task(
+        client,
+        aid,
+        title="Determine refund amount",
+        signals={"deterministic_rules": True, "exact_math": True, "output_verifiable": True},
+    )
     response = client.post(f"/api/v1/assessments/{aid}/analyze")
     assert response.status_code == 200
     return aid
@@ -62,16 +66,20 @@ def test_html_escapes_untrusted_input_and_markdown_does_not_inject_headings(clie
     html = client.get(f"/api/v1/assessments/{aid}/report?format=html").text
     assert "<script>" not in html
     assert "&lt;script&gt;" in html
-    assert '<h1><script>' not in html
+    assert "<h1><script>" not in html
     assert "\\# Illegal heading" in md
 
 
 def test_review_remains_unverified_in_report(client):
     aid = analyzed_id(client)
-    reviewer = client.post(f"/api/v1/assessments/{aid}/fde-review", json={
-        "reviewer_id": "Example FDE", "selected_category": "traditional_software",
-        "rationale": "A predictable calculation must be implemented with code.",
-    })
+    reviewer = client.post(
+        f"/api/v1/assessments/{aid}/fde-review",
+        json={
+            "reviewer_id": "Example FDE",
+            "selected_category": "traditional_software",
+            "rationale": "A predictable calculation must be implemented with code.",
+        },
+    )
     assert reviewer.status_code == 201
     html = client.get(f"/api/v1/assessments/{aid}/report?format=html").text
     assert "Example FDE" in html
@@ -81,14 +89,29 @@ def test_review_remains_unverified_in_report(client):
 
 def test_untrusted_ai_proposals_remain_labeled_and_escaped(client):
     from app.domain.persistence import AssessmentDetail
+
     aid = analyzed_id(client)
     detail = AssessmentDetail.model_validate(client.get(f"/api/v1/assessments/{aid}").json())
-    proposals = [{"assessment_revision": detail.revision, "feature": "evaluation",
-                  "provider": "test", "model": "stub", "prompt_version": "3.0", "schema_version": "3.0",
-                  "proposal": {"poc_scope": "<script>exploit()</script>", "metrics": ["fake score"]}},
-                 {"assessment_revision": detail.revision-1, "feature": "challenge",
-                  "provider": "test", "model": "stub", "prompt_version": "3.0", "schema_version": "3.0",
-                  "proposal": {"reason": "stale"}}]
+    proposals = [
+        {
+            "assessment_revision": detail.revision,
+            "feature": "evaluation",
+            "provider": "test",
+            "model": "stub",
+            "prompt_version": "3.0",
+            "schema_version": "3.0",
+            "proposal": {"poc_scope": "<script>exploit()</script>", "metrics": ["fake score"]},
+        },
+        {
+            "assessment_revision": detail.revision - 1,
+            "feature": "challenge",
+            "provider": "test",
+            "model": "stub",
+            "prompt_version": "3.0",
+            "schema_version": "3.0",
+            "proposal": {"reason": "stale"},
+        },
+    ]
     markdown = render_markdown(detail, proposals)
     html = render_html(detail, proposals)
     assert "stale: yes" in markdown
@@ -119,13 +142,16 @@ def test_offline_evaluation_and_expected_categories():
     assert result["passed"] == result["total"] == 4
     assert result["failed"] == 0
     assert {x["id"]: x["actual"][0] for x in result["cases"]} == {
-        "ai-support": "strong_ai_candidate", "exact-pricing": "traditional_software",
-        "hybrid-refund": "ai_human_approval", "privacy-blocked": "more_discovery",
+        "ai-support": "strong_ai_candidate",
+        "exact-pricing": "traditional_software",
+        "hybrid-refund": "ai_human_approval",
+        "privacy-blocked": "more_discovery",
     }
 
 
 def test_regression_evaluation_returns_failure_for_wrong_ground_truth(tmp_path):
     from app.evaluation import DEFAULT_DATASET
+
     data = json.loads(DEFAULT_DATASET.read_text())
     data["cases"][0]["expected_category"] = "human_led"
     path = tmp_path / "bad-goldens.json"
@@ -137,9 +163,11 @@ def test_regression_evaluation_returns_failure_for_wrong_ground_truth(tmp_path):
 
 def test_demo_recreates_these_reports_without_external_provider(tmp_path):
     from scripts.demo import run_demo
+
     results = run_demo(tmp_path)
     assert results == {
-        "ai-support": "strong_ai_candidate", "exact-pricing": "traditional_software",
+        "ai-support": "strong_ai_candidate",
+        "exact-pricing": "traditional_software",
         "hybrid-refund": "ai_human_approval",
     }
     for name in results:
@@ -149,8 +177,10 @@ def test_demo_recreates_these_reports_without_external_provider(tmp_path):
 
 def test_report_section_snapshot_matches_versioned_golden(client):
     from pathlib import Path
+
     from app.domain.persistence import AssessmentDetail
     from app.reporting.render import build_sections
+
     path = Path(__file__).resolve().parent.parent / "evals" / "report_sections.json"
     golden = json.loads(path.read_text(encoding="utf-8"))
     aid = analyzed_id(client)

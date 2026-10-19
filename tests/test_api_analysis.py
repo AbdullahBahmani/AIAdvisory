@@ -25,7 +25,9 @@ def test_rejects_malformed_workflow():
 
 
 def test_rejects_unexpected_fields():
-    response = client.post("/api/v1/analysis/preview", json={**AI_SUPPORT, "authorize_rollout": True})
+    response = client.post(
+        "/api/v1/analysis/preview", json={**AI_SUPPORT, "authorize_rollout": True}
+    )
     assert response.status_code == 422
 
 

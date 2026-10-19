@@ -1,11 +1,13 @@
 """Phase 7 Streamlit panels; backend remains the sole source of permissions/data."""
+
 from __future__ import annotations
 
 from urllib.error import HTTPError, URLError
 
 
 def _call(st, base_url, method, path, payload=None):
-    from ui.streamlit_app import api_request, _api_error
+    from ui.streamlit_app import _api_error, api_request
+
     try:
         return api_request(base_url, method, path, payload)
     except (HTTPError, URLError, ValueError, OSError) as exc:
@@ -16,7 +18,10 @@ def _call(st, base_url, method, path, payload=None):
 def render_collaboration(st, base_url: str, assessment: dict) -> None:
     aid = assessment["id"]
     st.subheader("Team collaboration")
-    st.caption("Comments and approvals are attributed by the API. Old revisions remain historical evidence.")
+    st.caption(
+        "Comments and approvals are attributed by the API. "
+        "Old revisions remain historical evidence."
+    )
 
     reviewer = _call(st, base_url, "GET", f"/api/v1/assessments/{aid}/reviewer")
     if reviewer:
@@ -26,6 +31,7 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
 
     with st.expander("Assign reviewer (organization administrator)"):
         from ui.streamlit_app import api_request
+
         try:
             members = api_request(base_url, "GET", "/api/v1/workspace/members")
         except (HTTPError, URLError, ValueError, OSError):
@@ -35,8 +41,13 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
         if reviewers:
             chosen = st.selectbox("Active reviewer", reviewers, key=f"reviewer_{aid}")
             if st.button("Assign", key=f"assign_{aid}"):
-                result = _call(st, base_url, "PUT", f"/api/v1/assessments/{aid}/reviewer",
-                               {"reviewer_subject": chosen})
+                result = _call(
+                    st,
+                    base_url,
+                    "PUT",
+                    f"/api/v1/assessments/{aid}/reviewer",
+                    {"reviewer_subject": chosen},
+                )
                 if result:
                     st.rerun()
 
@@ -47,37 +58,61 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
             st.caption("No discussion yet.")
         for comment in comments:
             with st.container(border=True):
-                st.caption(f"{comment['author']} · assessment revision {comment['assessment_revision']}")
+                st.caption(
+                    f"{comment['author']} · assessment revision {comment['assessment_revision']}"
+                )
                 st.write(comment["body"])
     with st.form(f"comment_{aid}", clear_on_submit=True):
         note = st.text_area("Add a comment", max_chars=2000, key=f"note_{aid}")
         if st.form_submit_button("Post comment"):
             if len(note.strip()) < 3:
                 st.error("Comment must contain at least 3 characters.")
-            elif _call(st, base_url, "POST", f"/api/v1/assessments/{aid}/comments", {"body": note.strip()}):
+            elif _call(
+                st, base_url, "POST", f"/api/v1/assessments/{aid}/comments", {"body": note.strip()}
+            ):
                 st.rerun()
 
     st.markdown("#### Staged review")
     current = _call(st, base_url, "GET", f"/api/v1/assessments/{aid}/approvals")
     if current:
-        st.caption(f"Applies only to revision {current['revision']}; AI recommendations are advisory.")
-        columns = st.columns(3)
-        for column, stage in zip(columns, ("technical", "security", "business")):
-            column.metric(stage.capitalize(), current["stages"].get(stage, "pending").replace("_", " ").title())
+        st.caption(
+            f"Applies only to revision {current['revision']}; AI recommendations are advisory."
+        )
+        stages = ("technical", "security", "business")
+        columns = st.columns(len(stages))
+        # `columns` is built from `stages`, so both iterables always have the same length.
+        for column, stage in zip(columns, stages, strict=True):
+            column.metric(
+                stage.capitalize(),
+                current["stages"].get(stage, "pending").replace("_", " ").title(),
+            )
         for vote in current["history"]:
-            st.caption(f"{vote['stage']} · {vote['decision']} · {vote['actor']} · {vote['rationale']}")
+            st.caption(
+                f"{vote['stage']} · {vote['decision']} · {vote['actor']} · {vote['rationale']}"
+            )
     with st.form(f"approval_{aid}"):
         stage = st.selectbox("Review stage", ["technical", "security", "business"])
-        decision = st.selectbox("Decision", ["approved", "changes_requested"],
-                                format_func=lambda v: v.replace("_", " ").title())
+        decision = st.selectbox(
+            "Decision",
+            ["approved", "changes_requested"],
+            format_func=lambda v: v.replace("_", " ").title(),
+        )
         rationale = st.text_area("Evidence and rationale", max_chars=2000)
         if st.form_submit_button("Record signed-in reviewer decision"):
             if len(rationale.strip()) < 5:
                 st.error("Provide a reason of at least 5 characters.")
-            elif _call(st, base_url, "POST", f"/api/v1/assessments/{aid}/approvals",
-                       {"stage": stage, "decision": decision, "rationale": rationale.strip()}):
+            elif _call(
+                st,
+                base_url,
+                "POST",
+                f"/api/v1/assessments/{aid}/approvals",
+                {"stage": stage, "decision": decision, "rationale": rationale.strip()},
+            ):
                 st.rerun()
-    st.caption("Enterprise review requires authenticated distinct people; this screen does not authorize rollout.")
+    st.caption(
+        "Enterprise review requires authenticated distinct people; "
+        "this screen does not authorize rollout."
+    )
 
 
 def render_workspace(st, base_url: str) -> None:
@@ -90,15 +125,23 @@ def render_workspace(st, base_url: str) -> None:
         c.metric("Assigned to me", summary["assigned_to_me"])
         d.metric("Unread notices", summary["unread_notifications"])
         st.markdown("#### Portfolio by status")
-        st.dataframe([{"Status": name.replace("_", " ").title(), "Count": n}
-                      for name, n in summary["by_status"].items()],
-                     use_container_width=True, hide_index=True)
+        st.dataframe(
+            [
+                {"Status": name.replace("_", " ").title(), "Count": n}
+                for name, n in summary["by_status"].items()
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
     inbox = _call(st, base_url, "GET", "/api/v1/workspace/inbox")
     if not inbox:
         return
     st.markdown("#### My assigned assessments")
     for assignment in inbox["assigned_assessments"]:
-        st.write(f"**{assignment['title']}** — {assignment['status']} (revision {assignment['revision']})")
+        st.write(
+            f"**{assignment['title']}** — {assignment['status']} "
+            f"(revision {assignment['revision']})"
+        )
     if not inbox["assigned_assessments"]:
         st.caption("No assigned assessments.")
     st.markdown("#### Notifications")
