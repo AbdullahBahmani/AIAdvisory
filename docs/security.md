@@ -92,3 +92,45 @@ Every `/api/v1` route is now denied without a server-provisioned credential, exc
 OIDC access tokens are validated with pinned HTTPS issuer, audience, JWKS and algorithm RS256, mandatory exp/iat/iss/aud/sub claims and bounded JWK cache/timeouts. Authorization is **not** derived from JWT role, group or organization claims: an operator-approved `oidc_memberships` row maps an external subject to an organization and role. Multi-org users must explicitly select an existing membership. `ADVISORY_OIDC_REQUIRED=1` rejects older local API credentials. There is no hosted IdP, MFA, browser OAuth session or consent system supplied by this repository.
 
 After authentication, API requests use SQL atomic per-subject/organization minute buckets; use a separate ingress limiter for unauthenticated traffic and protection against distributed attacks. SQLite is for local use; PostgreSQL is required for cross-replica storage. Request counts are prunable by operator command. The SQLite backup and retention CLI require explicit output paths, tenants and cutoffs; retention deletes related audit entries, so obtain policy/legal-hold approval first. `ADVISORY_DEPLOYMENT_MODE=production` refuses startup while external release gates remain unverified.
+
+## Local/demo actor attribution (2026-10-20, ADR-0009)
+
+`ADVISORY_DEMO_MODE=1` no longer answers every caller with one global identity. A
+presented credential is authenticated **exactly like the production path**: the
+`Authorization: Bearer aia_…` value is resolved from `api_credentials` (hashed
+lookup, revocation, expiry, organization and role checks) into a server-verified
+`subject`, `organization_id` and `role`. A JWT is validated against the pinned OIDC
+issuer/audience/JWKS and mapped to a pre-provisioned membership. A bad, revoked,
+expired or malformed credential is **401 even in demo mode** — the demo switch is
+never a fallback after a failed credential.
+
+Only the **absence** of any credential produces the synthetic `local_demo`
+identity. It has no organization, is never verified, and every record it produces
+stays marked `identity_unverified=True` / `actor_verified=False`.
+
+- **Tenant scope.** A named local principal sees only its own organization.
+  Assessments created by the synthetic demo identity have no organization and
+  stay quarantined from verified principals, like legacy unscoped rows.
+- **Server-derived audit actor.** The audit actor, the actor's organization and
+  the verification flag are stamped from the authenticated principal, including
+  by a mapper hook, so request text can never become an actor. A submitted
+  reviewer label is rejected (403) for a verified principal and, for the
+  synthetic demo, kept only as an explicitly unverified `claimed_actor`.
+- **Role and separation of duties.** A local principal needs the `reviewer` role
+  to review or finalize; the synthetic demo identity keeps the shared
+  `ADVISORY_REVIEW_TOKEN` (403 otherwise) and can never cast approval votes, so
+  the three-stage chain cannot collapse onto one unverified actor. With
+  `ADVISORY_REQUIRE_APPROVAL_CHAIN=1` the local path enforces the same
+  three-distinct-actor gate as the pilot path. Reviewer assignment binds too.
+- **Provisioning.** `python -m scripts.admin issue-local --organization … --subject
+  … --role …` provisions a named local principal, prints the credential once and
+  stores only its SHA-256 hash; `revoke --token-id …` invalidates it.
+
+**Still not identity proof.** A credential proves possession of a secret, not a
+human identity: no MFA, no IdP round trip, no session or device binding. The
+synthetic demo identity and the shared reviewer token remain synthetic and
+permanently unverified. Schema `0009_local_attribution` adds
+`reviews.reviewer_organization_id`, `audit_events.actor_organization_id` and
+`audit_events.actor_verified`; apply it with `python -m alembic upgrade head`
+before starting the API.
+

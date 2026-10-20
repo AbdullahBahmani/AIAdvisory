@@ -13,7 +13,7 @@ from app.api.assessments import router as assessments_router
 from app.api.portfolio import router as portfolio_router
 from app.api.reports import router as reports_router
 from app.api.workspace import router as workspace_router
-from app.db.session import get_db
+from app.db.session import get_db, schema_is_current
 from app.deployment import check_deployment_configuration
 from app.domain.schemas import (
     AssessmentPreviewRequest,
@@ -51,7 +51,8 @@ def readiness(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM organizations LIMIT 1")).all()
         current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        if current != "0008_portfolio":
+        # A version string alone is not evidence that the required columns exist.
+        if current not in {"0008_portfolio", "0009_local_attribution"} or not schema_is_current(db):
             raise HTTPException(status_code=503, detail="Database migration not current")
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database not ready") from None

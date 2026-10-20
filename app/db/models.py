@@ -13,8 +13,9 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, object_session, relationship
 
 
 def new_id() -> str:
@@ -132,7 +133,7 @@ class AnswerRow(Base):
     # Declared explicitly: SQLAlchemy 2.1 infers DOUBLE for a bare Python float,
     # while migration 0001 created FLOAT. Leaving it inferred made `alembic check`
     # report schema drift on a clean database after an ORM upgrade.
-    confidence: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="answers")
 
@@ -145,6 +146,9 @@ class ReviewRow(Base):
     )
     analysis_revision: Mapped[int] = mapped_column(Integer)
     reviewer_id: Mapped[str] = mapped_column(String(200))
+    reviewer_organization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
+    )
     selected_category: Mapped[str] = mapped_column(String(60))
     rationale: Mapped[str] = mapped_column(Text)
     override_reason: Mapped[str | None] = mapped_column(Text)
@@ -162,6 +166,10 @@ class AuditRow(Base):
     )
     event_type: Mapped[str] = mapped_column(String(70))
     actor: Mapped[str] = mapped_column(String(200), default="local_demo")
+    actor_organization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
+    )
+    actor_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
@@ -379,3 +387,22 @@ class PocObservationRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+
+
+@event.listens_for(AuditRow, "before_insert")
+def _stamp_audit_actor(_mapper, _connection, target: AuditRow) -> None:
+    """Attribute audit events to the server-side principal, never to request input.
+
+    The authenticated principal of the current session is the only accepted actor.
+    Rows written outside a request (operator scripts) keep their explicit actor
+    and stay marked unverified.
+    """
+    session = object_session(target)
+    principal = session.info.get("principal") if session is not None else None
+    if principal is None:
+        target.actor_verified = False
+        target.actor_organization_id = None
+        return
+    target.actor = principal.subject
+    target.actor_organization_id = principal.organization_id
+    target.actor_verified = bool(principal.verified)

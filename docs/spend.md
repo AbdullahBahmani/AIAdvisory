@@ -124,6 +124,7 @@ Seed it (synthetic only; no provider call, no real prices):
 ```python
 # /tmp/spend-demo/seed_spend_demo.py
 """Seed a local synthetic database so the spend report can be exercised offline."""
+
 import os
 from datetime import UTC, datetime
 
@@ -177,30 +178,64 @@ def run(rid, aid, feature, model, tokens, cost, source, when):
 
 
 with Session(engine) as db:
-    db.add_all([OrganizationRow(id="org-1", name="Example Co"),
-                OrganizationRow(id="org-2", name="Other Co")])
+    db.add_all(
+        [
+            OrganizationRow(id="org-1", name="Example Co"),
+            OrganizationRow(id="org-2", name="Other Co"),
+        ]
+    )
     db.flush()
-    db.add_all([assessment("a-1", "org-1", "Example Co"),
-                assessment("a-2", "org-2", "Other Co"),
-                assessment("a-legacy", None, None)])
+    db.add_all(
+        [
+            assessment("a-1", "org-1", "Example Co"),
+            assessment("a-2", "org-2", "Other Co"),
+            assessment("a-legacy", None, None),
+        ]
+    )
     db.flush()
-    db.add_all([
-        # Priced: the operator supplied a rate sheet.
-        run("r-1", "a-1", "discovery", "gpt-4.1-mini", (1200, 300),
-            "0.004800", "operator-reviewed-rate-sheet-2026-10", at(5, 9)),
-        run("r-2", "a-1", "workflow", "gpt-4.1-mini", (800, 150),
-            "0.002800", "operator-reviewed-rate-sheet-2026-10", at(6, 11)),
-        # Unpriced: recorded before the operator configured pricing.
-        run("r-3", "a-1", "risk", "gpt-4.1-mini", (640, 90), None, None, at(7, 10)),
-        # Unpriced, different tenant.
-        run("r-4", "a-2", "challenge", "gpt-4.1", (2100, 480), None, None, at(9, 15)),
-        # Priced, different tenant and a different model.
-        run("r-5", "a-2", "evaluation", "gpt-4.1", (1500, 400),
-            "0.011000", "operator-reviewed-rate-sheet-2026-10", at(12, 8)),
-        # Legacy assessment with no tenant assignment, and a corrupted cost
-        # string, to show that a malformed value is never added to the total.
-        run("r-6", "a-legacy", "discovery", "gpt-4.1-mini", (400, 60), "n/a", None, at(13, 14)),
-    ])
+    db.add_all(
+        [
+            # Priced: the operator supplied a rate sheet.
+            run(
+                "r-1",
+                "a-1",
+                "discovery",
+                "gpt-4.1-mini",
+                (1200, 300),
+                "0.004800",
+                "operator-reviewed-rate-sheet-2026-10",
+                at(5, 9),
+            ),
+            run(
+                "r-2",
+                "a-1",
+                "workflow",
+                "gpt-4.1-mini",
+                (800, 150),
+                "0.002800",
+                "operator-reviewed-rate-sheet-2026-10",
+                at(6, 11),
+            ),
+            # Unpriced: recorded before the operator configured pricing.
+            run("r-3", "a-1", "risk", "gpt-4.1-mini", (640, 90), None, None, at(7, 10)),
+            # Unpriced, different tenant.
+            run("r-4", "a-2", "challenge", "gpt-4.1", (2100, 480), None, None, at(9, 15)),
+            # Priced, different tenant and a different model.
+            run(
+                "r-5",
+                "a-2",
+                "evaluation",
+                "gpt-4.1",
+                (1500, 400),
+                "0.011000",
+                "operator-reviewed-rate-sheet-2026-10",
+                at(12, 8),
+            ),
+            # Legacy assessment with no tenant assignment, and a corrupted cost
+            # string, to show that a malformed value is never added to the total.
+            run("r-6", "a-legacy", "discovery", "gpt-4.1-mini", (400, 60), "n/a", None, at(13, 14)),
+        ]
+    )
     db.commit()
 print("seeded", URL)
 ```

@@ -97,15 +97,17 @@ def accept_task_drafts(
         db.flush()
         created.append(task_out(task))
     principal = current_principal(db)
+    # The audit actor is the authenticated principal; a typed label is only kept
+    # as an explicitly unverified claim.
     audit(
         db,
         row,
         "ai.task_drafts_accepted",
-        actor=payload.reviewer_label if principal.demo else principal.subject,
+        actor=payload.reviewer_label,
         source_run_id=run.id,
         selected_indices=selected,
         rationale=payload.rationale,
-        identity_unverified=principal.demo,
+        identity_unverified=not principal.verified,
     )
     db.commit()
     return created

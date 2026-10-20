@@ -2,10 +2,12 @@
 
 Examples:
   python -m scripts.admin issue --organization Example --subject alice --role admin
+  python -m scripts.admin issue-local --organization Example --subject alice --role reviewer
   python -m scripts.admin revoke --token-id <id>
 """
 
 import argparse
+import os
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
@@ -13,6 +15,26 @@ from sqlalchemy import delete, select
 from app.db.models import ApiCredentialRow, OidcMembershipRow, OrganizationRow, RequestLimitRow
 from app.db.session import SessionLocal
 from app.security import ROLE_LEVEL, digest_token, make_token
+
+
+def _issue_credential(db, organization: str, subject: str, role: str, days: int):
+    """Create the organization if needed and store only the hash of a new token."""
+    org = db.scalar(select(OrganizationRow).where(OrganizationRow.name == organization))
+    if org is None:
+        org = OrganizationRow(name=organization)
+        db.add(org)
+        db.flush()
+    token = make_token()
+    row = ApiCredentialRow(
+        organization_id=org.id,
+        subject=subject,
+        role=role,
+        token_hash=digest_token(token),
+        expires_at=datetime.now(UTC) + timedelta(days=days),
+    )
+    db.add(row)
+    db.flush()
+    return row, org, token
 
 
 def main():
@@ -25,6 +47,14 @@ def main():
     issue.add_argument("--subject", required=True)
     issue.add_argument("--role", choices=list(ROLE_LEVEL), required=True)
     issue.add_argument("--days", type=int, default=30)
+    local = sub.add_parser(
+        "issue-local",
+        help="Issue a named local principal credential for the local/demo workflow",
+    )
+    local.add_argument("--organization", required=True)
+    local.add_argument("--subject", required=True)
+    local.add_argument("--role", choices=list(ROLE_LEVEL), required=True)
+    local.add_argument("--days", type=int, default=30)
     revoke = sub.add_parser("revoke", help="Revoke an existing credential by ID")
     revoke.add_argument("--token-id", required=True)
     create_org = sub.add_parser(
@@ -38,7 +68,7 @@ def main():
     member.add_argument("--role", choices=list(ROLE_LEVEL), required=True)
     disable = sub.add_parser("disable-oidc", help="Disable OIDC membership by ID")
     disable.add_argument("--membership-id", required=True)
-    # The parser handle is not needed: no prune-specific arguments are registered.
+    # The parser handle is not needed: add_parser registers the command as a side effect.
     sub.add_parser("prune-ratelimits", help="Delete request counters older than one day")
     args = parser.parse_args()
     with SessionLocal.begin() as db:
@@ -51,26 +81,39 @@ def main():
                 parser.error(
                     "Days must be 1..365 and organization/subject must have 1..200 characters"
                 )
-            org = db.scalar(
-                select(OrganizationRow).where(OrganizationRow.name == args.organization)
+            row, org, token = _issue_credential(
+                db, args.organization, args.subject, args.role, args.days
             )
-            if org is None:
-                org = OrganizationRow(name=args.organization)
-                db.add(org)
-                db.flush()
-            token = make_token()
-            row = ApiCredentialRow(
-                organization_id=org.id,
-                subject=args.subject,
-                role=args.role,
-                token_hash=digest_token(token),
-                expires_at=datetime.now(UTC) + timedelta(days=args.days),
-            )
-            db.add(row)
-            db.flush()
             print(
-                f"Credential ID: {row.id}\nOrganization ID: {org.id}\nRole: {args.role}\n"
+                f"Credential ID: {row.id}\nOrganization ID: {org.id}\n"
+                f"Role: {args.role}\n"
                 f"Token (save now; never stored in plaintext): {token}"
+            )
+        elif args.command == "issue-local":
+            if (
+                not (1 <= args.days <= 365)
+                or not (1 <= len(args.subject) <= 200)
+                or not (1 <= len(args.organization) <= 200)
+            ):
+                parser.error(
+                    "Days must be 1..365 and organization/subject must have 1..200 characters"
+                )
+            mode = os.getenv("ADVISORY_DEPLOYMENT_MODE", "local").lower()
+            if mode not in ("local", ""):
+                parser.error(
+                    "Local principals are for local/demo use only; use 'issue' outside local mode"
+                )
+            row, org, token = _issue_credential(
+                db, args.organization, args.subject, args.role, args.days
+            )
+            print(
+                f"Credential ID: {row.id}\nOrganization ID: {org.id}\n"
+                f"Subject: {args.subject}\nRole: {args.role}\n"
+                f"Token (save now; never stored in plaintext): {token}\n"
+                f"Use as 'Authorization: Bearer <token>'. The server resolves the subject, "
+                f"organization and role from this credential, so reviews and audit events "
+                f"are attributed to '{args.subject}' instead of a typed name. It is not a "
+                f"proof of human identity."
             )
         elif args.command == "revoke":
             row = db.get(ApiCredentialRow, args.token_id)
