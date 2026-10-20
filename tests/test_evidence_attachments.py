@@ -111,6 +111,12 @@ def test_hostile_filenames_never_escape_the_storage_root(store, hostile):
     aid = _assessment(client, owner)
     sentinel = tmp_path / "sentinel.txt"
     sentinel.write_text("untouched", encoding="utf-8")
+    # Snapshot the directory BEFORE the upload. Every entry that appears afterwards
+    # must live inside the storage root. This is stronger than naming the files that
+    # are expected to be there: it catches any new file anywhere under the temp
+    # directory, whatever it is called, so it does not depend on how the test
+    # fixture happens to name its database.
+    before = {item.name for item in tmp_path.iterdir()}
 
     created = _upload(client, aid, owner, hostile, "text/plain", b"plain evidence text")
     assert created.status_code == 201, created.text
@@ -122,13 +128,14 @@ def test_hostile_filenames_never_escape_the_storage_root(store, hostile):
     assert ".." not in name
     assert len(name) <= attachments.MAX_DISPLAY_NAME
 
-    # Nothing was written outside the storage root.
+    # Nothing was written outside the storage root. The root directory itself is
+    # created lazily on the first upload, so it is expected to appear; everything
+    # else that is new must not.
     assert sentinel.read_text(encoding="utf-8") == "untouched"
     outside = {
         item.name
         for item in tmp_path.iterdir()
-        if not item.name.startswith("isolation.sqlite3")
-        and item.name not in {"attachments", "sentinel.txt"}
+        if item.name not in before and item.name != root.name
     }
     assert outside == set()
 
