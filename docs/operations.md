@@ -20,7 +20,7 @@
 
 ## Database and backups
 
-- Local test uses SQLite; `SQLAlchemy` uses `DATABASE_URL` for PostgreSQL when the optional `.[postgres]` driver is installed. A **local, disposable** PostgreSQL drill has now been run (see "PostgreSQL drill" below): migration chain, `alembic check`, downgrade, concurrency, rate limiting, index review and a `pg_dump`/`pg_restore` rehearsal against a throwaway container. **That drill is not a production PostgreSQL validation** — no managed instance, no TLS, no encryption, no off-site copy, no capacity or load test and no tested RPO/RTO. Use TLS, least-privilege service account, non-default secrets and a managed database when piloting.
+- Local test uses SQLite; `SQLAlchemy` uses `DATABASE_URL` for PostgreSQL when the optional `.[postgres]` driver is installed. A **local, disposable** PostgreSQL drill has now been run (see "PostgreSQL drill" below): migration chain, `alembic check`, downgrade, concurrency, rate limiting, index review and a `pg_dump`/`pg_restore` rehearsal against a throwaway container. A second **local, disposable** failure-recovery drill has been run as well (see "Failure-recovery drill" below): crash mid-write, restore into a running service, audit-history survival, an unreachable/partitioned database and a simulated disk-full write failure. **Neither drill is a production validation** — no managed instance, no TLS, no encryption, no off-site copy, no capacity or load test and no tested RPO/RTO, and neither one is disaster-recovery readiness. Use TLS, least-privilege service account, non-default secrets and a managed database when piloting.
 - Stop the app before a filesystem SQLite copy, or use SQLite's online `.backup()` API to a protected file; encrypt backups at rest and test restore to a separate database. For PostgreSQL, take encrypted managed snapshots/`pg_dump` and drill `pg_restore` in isolation; do not log DB URL credentials.
 - Establish written retention, deletion, soft-delete, backup expiry, export access, DSAR process and legal hold policies *before* collecting real data. A soft-deleted record is not erased; it remains in the database and audit log. Do not call this GDPR-complete.
 - Use a single migration owner, preserve reversible backups, and review Alembic before release. Schema `0004_tenant_security` does NOT attach legacy data to a new tenant.
@@ -38,6 +38,7 @@
 - [ ] Independent identity/SSO, MFA, verified tenant provisioning and user lifecycle
 - [ ] Automated negative authorization tests for every endpoint, including AI acceptance and reports, in the *full merged repository*
 - [ ] PostgreSQL deployment, concurrency, migrations, backup and restore drill — *local drill done 2026-10-19, production drill still OPEN*
+- [ ] Failure-recovery drill on the real deployment — *local, disposable drill done 2026-10-20 (`scripts/recovery_drill.py`); the production equivalent (managed cluster, real disk exhaustion, point-in-time recovery, replication failover) and the five open findings are still OPEN*
 - [ ] Data processing agreements, residency/retention consent, redaction/DLP and deletion runbook
 - [ ] TLS ingress, distributed request limiting, CSRF/session review for browser deployment
 - [ ] Secret lifecycle and key rotation, dependency/audit scanner, penetration test (*a local dependency scan of the committed lock file now exists — see "Local dependency vulnerability scan" below; the hosted/CI scan, image scanning, SBOM and pen test remain OPEN*)
@@ -204,6 +205,71 @@ optimistic write version, the `SELECT … FOR UPDATE` row lock, the `If-Match`
 preconditions (428/412/409), cross-tenant isolation and the atomic rate
 limiter. The drill uses its own `aiadvisory_pg_drill` schema and drops it
 afterwards.
+
+## Failure-recovery drill (local, disposable) — 2026-10-20
+
+`python -m scripts.recovery_drill all` runs the failure-path drill that the
+P5-03 section of `docs/release-verification.md` listed as unverified: crash
+mid-write, restore into a running service, audit-history survival, an
+unreachable/partitioned database, and a simulated disk-full write failure. It
+starts a throwaway `postgres:16-alpine` container, runs a **real API process**
+against it, breaks things on purpose and reports what it found:
+
+```bash
+python -m scripts.recovery_drill up        # start the disposable instance
+python -m scripts.recovery_drill run       # run every scenario
+python -m scripts.recovery_drill all       # up + run + down
+python -m scripts.recovery_drill down      # remove the disposable instances
+python -m scripts.recovery_drill run --output /tmp/recovery.json   # JSON report
+```
+
+Configuration is via `RECOVERY_DRILL_*` environment variables;
+`RECOVERY_DRILL_PASSWORD` defaults to a throwaway local-only value
+(`local_recovery_drill_only_pw`) that must never be reused anywhere else. The
+drill removes every container and temporary file it creates, including when a
+step fails, and it writes nothing into the repository.
+
+`tests/test_recovery_drill.py` holds the automated part: 46 offline tests for
+the drill's analysis and reporting (no Docker, no database) and 2 opt-in
+container tests that skip cleanly unless Docker is available:
+
+```bash
+ADVISORY_RECOVERY_DRILL=1 python -m pytest -q tests/test_recovery_drill.py
+```
+
+**This drill is NOT disaster-recovery readiness.** It is evidence that the
+application takes safe code paths when a dependency fails, a process dies
+mid-write, storage refuses a write or a backup is restored underneath a live
+service. It measures no RPO and no RTO, and it does not simulate real
+hardware failure, real disk exhaustion, point-in-time recovery, WAL shipping,
+replication failover or a managed-database network partition. The production
+recovery gate stays open.
+
+Findings from the 2026-10-20 run, all still **open** (see
+`docs/release-verification.md` for the minimal reproductions):
+
+- A dependency failure (database stopped) answers **HTTP 500**, not a
+  dependency-aware 503. `/ready` and the rate limiter already answer 503; the
+  data routes do not. Monitor 5xx as "the application is broken" today, and
+  expect a burst of 500s during a database incident or a restore.
+- A request that fails with an unhandled exception is **not logged by the
+  request logger and carries none of the standard security headers** (no
+  request ID, no `Cache-Control: no-store`). A database outage therefore
+  cannot be correlated with the `http.request` telemetry this document tells
+  operators to watch.
+- **No connect or statement timeout is configured**, so a partitioned database
+  makes requests hang instead of failing closed. A pool of wedged requests
+  would stop the service answering, including `/health`.
+- **The audit trail is not append-only across a restore.** A restore silently
+  rewound the trail of a finalized assessment: the `fde.finalized` event was
+  lost, the assessment went back to `in_review`, and the API answered 200
+  with the shortened trail. Anything that can roll the database back can roll
+  the evidence base back. Until the audit trail is written to an append-only
+  sink outside the restorable database, a restore must be treated as a
+  potential loss of decision records and must be disclosed to whoever relies
+  on the trail.
+- A restore underneath a running service rejected a **valid credential with
+  HTTP 401** while the credential table was being rebuilt.
 
 Operational notes for a real pilot, raised by the drill and still open:
 

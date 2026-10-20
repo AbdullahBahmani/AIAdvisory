@@ -708,7 +708,9 @@ The real ASGI server was started against PostgreSQL (`uvicorn app.main:app`):
       tests and is not part of the default `pytest -q` run.
 - [ ] Failure-recovery drills: crash/kill during a write, disk-full, network
       partition between replicas, restore into a running service, and
-      verification that audit history survives.
+      verification that audit history survives. **A local, disposable
+      failure-recovery drill now covers the first four (2026-10-20, see the
+      section below);** the production equivalents are still OPEN.
 - [ ] Independent penetration test, DPA/DPIA, residency/retention, external
       audit and alerting, and a named release approver.
 
@@ -960,3 +962,168 @@ work did not touch.
 - [ ] Independent penetration test.
 - [ ] Every other gate in this file. **Do not record P5-04 or P5-05 as
       complete because this section exists.**
+=======
+## P5-03 follow-up: local failure-recovery drill — NOT disaster-recovery readiness (2026-10-20)
+
+**Planner item P5-03 stays OPEN.** The P5-03 drill above explicitly listed
+failure-recovery drills as unverified. This section records a *local,
+disposable* drill that exercises those paths against a throwaway
+`postgres:16-alpine` container and a real API process.
+
+> **This is NOT disaster-recovery readiness.** It is evidence that the
+> application takes safe code paths when a dependency fails, a process dies
+> mid-write, storage refuses a write or a backup is restored underneath a live
+> service. It proves nothing about hardware failure, real disk exhaustion,
+> point-in-time recovery, WAL shipping, replication failover, backup integrity
+> in the field, or the measured RPO/RTO of the production database.
+
+### How it was run (reproducible)
+
+```bash
+uv sync --extra dev --extra postgres
+python -m scripts.recovery_drill all        # up + run every scenario + down
+python -m scripts.recovery_drill run        # run the scenarios against a fresh instance
+python -m scripts.recovery_drill up|down    # manage the disposable instances
+python -m scripts.recovery_drill run --output /tmp/recovery.json   # JSON report
+```
+
+Environment: Docker 29.8.2, `postgres:16-alpine`, Python 3.12.15, SQLAlchemy
+2.1.5, psycopg 3. Containers `aiadvisory-recovery-pg` (port 15470) and
+`aiadvisory-recovery-pg-full` (port 15471), both **removed** at the end of the
+run; no container, volume or dump file was left behind. The drill password is
+a throwaway local-only value read from `RECOVERY_DRILL_PASSWORD` (documented
+default `local_recovery_drill_only_pw`); it is not stored in the repository.
+
+New file `scripts/recovery_drill.py`; new file `tests/test_recovery_drill.py`
+(46 offline tests + 2 opt-in container tests). The offline tests cover the
+drill's *analysis and reporting* and run in the default `pytest -q`; the
+container-driven tests skip cleanly unless Docker is available and
+`ADVISORY_RECOVERY_DRILL=1`:
+
+```bash
+ADVISORY_RECOVERY_DRILL=1 python -m pytest -q tests/test_recovery_drill.py
+```
+
+Test suite result for this worktree: **194 passed, 18 skipped** (148 existing
++ 46 new; the 16 PostgreSQL drill tests and the 2 container-driven recovery
+tests skip without their prerequisites).
+
+### Results per scenario
+
+| Scenario | Verdict | What was observed |
+| --- | --- | --- |
+| Crash mid-write | **PASS** | The API was `SIGKILL`ed while a workflow + audit write was blocked inside PostgreSQL. The transaction was rolled back atomically: no partial row, no orphaned foreign key, no half-applied migration, and the restarted service read the pre-crash state correctly (HTTP 200). |
+| Restore into a running service | **FINDING** | A `pg_dump` backup was restored over the live database while the API was serving. The service recovered on its own (HTTP 200, restored row set, no stale rows, no stack trace, no credential in the log), but a request that overlapped the restore was rejected with **HTTP 401 for a valid credential**. |
+| Audit-history survival | **FINDING** | A crash did not change the audit trail. The restore, however, **silently rewound the trail**: the `fde.finalized` event was lost, the assessment went back to `in_review`, and the API kept returning HTTP 200 with the shortened trail. |
+| Database unreachable / network partition | **FINDING** | The service never served stale or misleading data and never leaked a stack trace or a credential, but an unreachable database produced **HTTP 500** (not 503), and a *partitioned* database made the request **hang** instead of failing closed. |
+| Disk full (simulated) | **FINDING** | With the storage genuinely exhausted the write failed with ENOSPC, **nothing partial was committed** (the row and audit counts matched the writes that had succeeded), the database stayed readable and consistent, and the service accepted writes again once the space was freed. The failure surfaced as **HTTP 500**. |
+
+### Application defects found (not fixed here)
+
+`app/**` is owned elsewhere, so these are reported, not patched. Each one has
+its own minimal reproduction.
+
+**1. A dependency failure is reported as HTTP 500, not as a dependency-aware 503.**
+Every data route lets `sqlalchemy.exc.OperationalError` escape to Starlette's
+`ServerErrorMiddleware`. `/ready` already does the right thing
+(`app/main.py:readiness()` catches `SQLAlchemyError` and raises
+`HTTPException(503)`), and the rate limiter does too
+(`app/throttling.py:enforce_limit()` returns 503 "Rate limiter unavailable"),
+but the read and write paths do not.
+*Reproduction:* stop the database, then `GET /api/v1/assessments` → **HTTP 500
+"Internal Server Error"**. A 500 is reported to monitoring as an application
+bug rather than an unavailable dependency. *File/function:* the route handlers
+in `app/api/assessments.py` (e.g. `list_assessments`, `create_assessment`) and
+the other API modules; the fix is a `SQLAlchemyError` handler that returns 503
+with the same "no-store" and request-ID headers as a normal reply.
+
+**2. An unhandled exception bypasses the request middleware: the 5xx response
+has no security headers and is not logged by the request logger.**
+`app/telemetry.py:instrument_request` assigns the security headers and writes
+the `http.request` log line *after* `await call_next(request)`, so an
+exception skips both.
+*Reproduction:* stop the database, then `GET /api/v1/assessments` and inspect
+the response headers and the API log. The reply carried only `date`, `server`,
+`content-length`, `content-type` and `Connection` — **no `X-Request-ID`, no
+`Cache-Control: no-store`, no `X-Content-Type-Options: nosniff`, no
+`Referrer-Policy`, no `X-Frame-Options`** — and the API log contained the
+uvicorn traceback but **no `http.request` line** for the failed request. That
+contradicts the statement in `docs/operations.md` that "All HTTP replies set a
+request ID", and it means a dependency outage cannot be correlated with the
+request telemetry an operator is told to monitor. *File/function:*
+`app/telemetry.py:instrument_request`.
+
+**3. No connect or statement timeout: a partitioned database wedges the
+request instead of failing it.**
+`app/db/session.py` creates the engine with `pool_pre_ping=True` and nothing
+else; `DATABASE_URL` carries no `connect_timeout`, and PostgreSQL has no
+`statement_timeout` configured.
+*Reproduction:* `docker pause` the database, then `GET /api/v1/assessments` —
+the request never returned (the drill's 8 s client timeout expired with the
+server-side request still running). With a connection pool, enough wedged
+requests exhaust the pool and the whole service stops answering, including
+`/health`. *File/function:* `app/db/session.py` (`create_engine`) and the
+`DATABASE_URL` contract in `docs/operations.md`.
+
+**4. The audit trail is not append-only across a restore, and the loss is
+silent.**
+The trail lives in the same database as the data it describes
+(`app/db/models.py:AuditRow`, foreign key to `assessments` with
+`ON DELETE CASCADE`). There is no monotonic counter, no hash chain, no
+external anchor and no restore marker anywhere in the schema.
+*Reproduction (the drill's own steps):* take a backup, record a human review
+and finalise the assessment, restore the backup, then
+`GET /api/v1/assessments/{id}/audit`. The reply is **HTTP 200 with a shorter
+trail**; the `fde.finalized` event is gone, `assessments.status` went from
+`finalized` back to `in_review`, and nothing in the API says that a decision
+record was lost. A reader cannot distinguish a rewound trail from a trail
+that never had those events. This is the evidence base for "a human decided",
+so it is the most serious finding of the drill. *File/function:*
+`app/db/models.py:AuditRow` and `app/api/assessments.py:audit_history()`;
+the mitigation is an append-only sink outside the restorable database (or a
+monotonic, externally anchored sequence), not a patch in the API.
+
+**5. A restore underneath a running service looks like an authentication
+failure.**
+While `pg_restore --clean` was dropping and recreating `api_credentials`, the
+credential lookup in `app/security.py:authenticate_request` found no row and
+raised **HTTP 401 "Invalid or revoked API credential" for a token that was
+valid a moment earlier**. A monitoring system would see a burst of 401s and
+an operator would chase a credential problem instead of a restore.
+*Reproduction:* restore a `pg_dump` into the live database while the API is
+serving and watch the status codes. *File/function:*
+`app/security.py:authenticate_request`; the lookup cannot distinguish "no
+such credential" from "the credential table is being rebuilt".
+
+### Operational observation (database behaviour, not an application defect)
+
+After the API process was `SIGKILL`ed, PostgreSQL did **not** reap the dead
+client's backend for more than 60 s; the drill had to `pg_terminate_backend`
+it to release the locks. The transaction was still rolled back correctly, but
+a crashed API can therefore hold row and table locks — and block other writers
+— for as long as the server takes to notice the dead socket.
+
+### What this drill could NOT simulate (and why)
+
+| Not simulated | Why it matters |
+| --- | --- |
+| Real power loss, kernel panic, OOM kill, node loss | The storage stack under PostgreSQL was never interrupted, so no torn write, no lost fsync and no storage-level crash consistency was exercised. Only the *client* was killed; PostgreSQL never had to replay its own WAL after an unclean stop. |
+| A crash of the database server itself | A real database crash triggers WAL replay and crash recovery; the drill only kills the API. |
+| A managed snapshot restore or point-in-time recovery | The drill replays a `pg_dump` with DDL that drops and recreates every table in a live database. A managed restore replaces or replays a whole cluster. |
+| A restore into a *different* database, cross-region or cross-account | The drill restored over the live database on purpose; the safe case (restore elsewhere, then cut over) was not exercised. |
+| A real network partition with a managed database | The drill stopped the container (connection refused) and froze it (`docker pause`, packets accepted but never answered). A managed failover, an AZ failure, a DNS failure, a security-group change or a pgbouncer outage behave differently, and the operating system under the freeze still acknowledges the packets. |
+| Real disk exhaustion | The drill simulated it with a size-limited tmpfs used as a tablespace, so the *write path* failed with a genuine ENOSPC while the WAL and the rest of the cluster kept working. A genuinely full volume also takes the WAL, the WAL archive, the backup tooling, the log volume and the application host's own filesystem with it, and it takes the database server down — the drill deliberately avoided that so the write-failure path could be observed at all. |
+| An append-only or WORM audit store, an external log sink, a hash chain or a signing key | The trail in the drill is a plain table in the restorable database, which is exactly what makes finding 4 possible. |
+| Connection poolers, read replicas, a load balancer that drains connections, or a fleet of API instances restarting as a fleet | The drill ran one API process against one local database. |
+| Capacity, load, replication lag, failover, `VACUUM`/bloat, connection exhaustion | No load was generated; the dataset is a handful of synthetic rows. |
+| Any RPO or RTO figure | The drill measures none. The 0.25 s restore of a 44 KB dump is **not** a recovery-time objective. |
+
+### The limits of this evidence
+
+A local drill is evidence that the *code paths* are safe. It is **not**
+evidence of disaster-recovery readiness. The production recovery gate stays
+open until an operator runs a rehearsed restore against the real managed
+cluster with encrypted off-site backups, point-in-time recovery, a written
+retention/deletion policy, an independent restore rehearsal at realistic
+volume, and a signed-off RPO/RTO — and until the five findings above are
+either fixed or explicitly accepted and documented.
