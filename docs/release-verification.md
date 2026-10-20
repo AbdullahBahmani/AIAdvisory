@@ -17,6 +17,11 @@ ruff format --check .
 # Requires network access and Python 3.12:
 uv lock
 uv sync --extra dev
+# Dependency vulnerability scan of the committed lock file (requires network;
+# runs entirely locally, no hosted runner, no new project dependency):
+uv audit --locked
+# Local provider-spend estimate (read-only; see docs/spend.md):
+python -m scripts.spend_report --organization "Example Co"
 # Local-only synthetic testing:
 docker compose up --build
 ```
@@ -36,7 +41,7 @@ docker compose up --build
 - [ ] Exercise all authorization paths on live PostgreSQL; verify concurrent request rate limiting and serializable data behavior.
 - [ ] Restore encrypted PostgreSQL backup to an isolated instance; document RPO/RTO, rotation and deletion policy.
 - [ ] Establish DPA/DPIA, residency, external model policy, retention, erasure/legal hold and access review; validate DLP/redaction.
-- [ ] Deploy TLS ingress with rate limiting before auth, secret store, external audit/alerting, vulnerability scanning and independent penetration test.
+- [ ] Deploy TLS ingress with rate limiting before auth, secret store, external audit/alerting, vulnerability scanning and independent penetration test. (*A local dependency scan of the committed lock file now exists — see "P5-04 / P5-05 local checks" below. The hosted/CI scan, image scanning, SBOM and independent penetration test remain OPEN.*)
 - [ ] Boot Docker/Streamlit in a browser and verify login/review/export as a real authorized test user.
 - [ ] Assign accountable release approver and verify rollback/incident runbooks and evidence before disabling the production guard in a reviewed change.
 
@@ -621,3 +626,250 @@ The real ASGI server was started against PostgreSQL (`uvicorn app.main:app`):
       audit and alerting, and a named release approver.
 
 Do not record P5-03 as complete because this section exists.
+
+## P5-04 / P5-05 local checks — provider-spend report and dependency scan (2026-10-20)
+
+**These are the two halves that were buildable without hosted runners, a
+networked CI, or an external review.** They are local, offline (except for the
+vulnerability advisory lookup) and read-only. **Neither one closes a planner
+item.** The enterprise release gate remains BLOCKED, `ADVISORY_DEPLOYMENT_MODE=production`
+still refuses to boot, and the alerting/dashboard, pen-test and CI-scanning
+halves of P5-04/P5-05 remain OPEN.
+
+Environment: macOS (Darwin) on arm64, Python 3.12.15, `uv` 0.12.1,
+SQLAlchemy 2.1.5, repository at commit `bc1ea5a` plus the changes in this
+section.
+
+### 1. Local provider-spend report (P5-04, provider-spend half)
+
+New file `scripts/spend_report.py` (no dependency changes, no application code
+touched) and new test file `tests/test_spend_report.py` (21 tests).
+
+The command aggregates the cost and token usage already stored in `ai_runs`:
+
+```bash
+DATABASE_URL=sqlite:///./aiadvisory.sqlite3 \
+  uv run --no-sync python -m scripts.spend_report --organization "Example Co"
+uv run --no-sync python -m scripts.spend_report --all-tenants --group-by day
+uv run --no-sync python -m scripts.spend_report --organization "Example Co" --format json
+```
+
+**Tenant scoping: single tenant by default.** The command refuses to run
+without an explicit scope — `--organization NAME_OR_UUID` (one tenant) or
+`--all-tenants` (the cross-tenant view). Both together, or neither, is an
+error (exit 2).
+
+**Unknown cost is reported, never invented.** `ai_runs.estimated_cost_usd` is
+only written when the operator supplied `ADVISORY_AI_INPUT_USD_PER_MILLION`,
+`ADVISORY_AI_OUTPUT_USD_PER_MILLION` and `ADVISORY_AI_PRICING_SOURCE`. The
+report classifies every run as priced / unpriced (no price recorded) / malformed
+(stored value is not a finite decimal), keeps `PRICED + UNPRICED + MALFORMED = RUNS`,
+never applies a price of its own, and shows `-` (not `0.000000`) where a group
+has no priced run. The USD column is the exact sum of the stored prices of the
+priced runs and is labelled a lower bound when any run has unknown cost.
+
+Actual output on a local synthetic database (3 runs for one tenant: 2 priced,
+1 unpriced; plus 1 unattributed legacy run):
+
+```
+==============================================================================
+LOCAL ESTIMATE from operator-supplied prices - NOT a billing reconciliation
+==============================================================================
+Window (UTC)   : 2026-09-01T00:00:00+00:00  ->  2026-11-01T00:00:00+00:00
+Scope          : organization 'Example Co' (id org-1) - single tenant
+Grouping       : model
+Database       : sqlite (read-only)
+Runs in scope  : 3
+Excluded       : 1 run(s) with no tenant assignment (visible only in --all-tenants)
+
+GROUP                               RUNS  PRICED  UNPRICED  MALFORMED      COST USD    IN TOK   OUT TOK
+-------------------------------------------------------------------------------------------------------
+openai/gpt-4.1-mini                    3       2         1          0      0.007600      2640       540
+-------------------------------------------------------------------------------------------------------
+TOTAL                                  3       2         1          0      0.007600      2640       540
+COST USD is the sum of the operator-supplied prices actually stored on the priced runs only.
+'-' means no run in that group carried a stored price, so the cost is unknown, not zero.
+
+Cost coverage  : 2 of 3 runs priced (66.7%); 1 unpriced (no operator price recorded), 0 malformed.
+                 1 run(s) have UNKNOWN cost. They are counted in every
+                 run total above but excluded from the USD figure, so the USD figure is a
+                 lower bound for this window - not the full spend. This tool never estimates
+                 a missing price; supply ADVISORY_AI_* pricing on the API host to record costs.
+Token usage    : 2640 input tokens (3 run(s) reported, 0 without),
+                 540 output tokens (3 run(s) reported, 0 without).
+Price sources  : operator-reviewed-rate-sheet-2026-10
+
+Reminder: these numbers come from prices the operator supplied at run time. They are not provider
+invoices, not a reconciliation and not a basis for external billing claims.
+```
+
+Cross-tenant view of the same database (6 runs, 2 tenants + 1 legacy
+assessment with no tenant assignment, including one deliberately corrupted
+cost string):
+
+```
+Runs in scope  : 6
+
+GROUP                               RUNS  PRICED  UNPRICED  MALFORMED      COST USD    IN TOK   OUT TOK
+-------------------------------------------------------------------------------------------------------
+Other Co                               2       1         1          0      0.011000      3600       880
+Example Co                             3       2         1          0      0.007600      2640       540
+(unassigned)                           1       0         0          1             -       400        60
+-------------------------------------------------------------------------------------------------------
+TOTAL                                  6       3         2          1      0.018600      6640      1480
+```
+
+The seed used to reproduce this is in `docs/spend.md`. It is synthetic data
+with synthetic price strings; no price in this repository is a real provider
+price and no run in it came from a real provider.
+
+**What this is not:** no alerting, no thresholds, no dashboard, no scheduled
+job, no reconciliation against provider invoices, and no currency handling
+beyond the single USD estimate column. The provider-spend half of P5-04 is
+*partially* addressed by a local command only.
+
+### 2. Dependency vulnerability scan (P5-05, dependency-scanner half)
+
+No GitHub-hosted runners exist for this repository, so the scan is a **local
+command**. `uv` 0.12.1 ships `uv audit`, which queries the OSV advisory
+service for the packages in the committed lock file. It adds **no project
+dependency**: `pyproject.toml` and `uv.lock` are unchanged by this work.
+
+Primary command (scans the committed `uv.lock`; `--locked` asserts that the
+lock file is current, so the audited set is exactly the locked set and not a
+freshly resolved one):
+
+```bash
+uv audit --locked
+```
+
+Actual result:
+
+```
+$ uv audit --locked
+warning: `uv audit` is experimental and may change without warning. Pass `--preview-features audit-command` to disable this warning.
+Resolved 60 packages in 3ms
+Found no known vulnerabilities and no adverse project statuses in 59 packages
+$ echo $?
+0
+```
+
+Machine-readable form of the same run:
+
+```
+$ uv audit --locked --output-format json
+{
+  "schema": {
+    "version": "preview"
+  },
+  "summary": {
+    "audited_packages": 59,
+    "vulnerabilities": 0,
+    "adverse_statuses": 0
+  },
+  "vulnerabilities": [],
+  "adverse_statuses": []
+}
+```
+
+`uv.lock` contains 60 packages; 59 are audited because the project itself
+(`ai-opportunity-advisor`) is not a dependency of anything.
+
+**Independent second scanner (hash-checked), via `uvx` so the project's
+dependency surface is unchanged.** The locked set is exported with its hashes
+and audited with `pip-audit`:
+
+```bash
+uv export --frozen --all-extras --no-emit-project --format requirements-txt -o /tmp/req-locked.txt
+uvx pip-audit -r /tmp/req-locked.txt --require-hashes -f columns          # PyPI service, hash validity enforced
+uvx pip-audit -r /tmp/req-locked.txt --require-hashes -s osv -f columns    # OSV service
+```
+
+Actual results:
+
+```
+$ uvx pip-audit -r /tmp/req-locked.txt --require-hashes -f columns
+No known vulnerabilities found
+$ echo $?
+0
+
+$ uvx pip-audit -r /tmp/req-locked.txt --require-hashes -s osv -f columns
+WARNING:pip_audit._cli:The --require-hashes flag with --service osv only enforces hash presence NOT hash validity. Use --service pypi to enforce hash validity.
+No known vulnerabilities found
+$ echo $?
+0
+```
+
+The exported file contains 59 pinned packages with their SHA-256 hashes from
+`uv.lock`.
+
+**No advisory was found in the locked dependency set, so no version was
+changed.** `pyproject.toml` and `uv.lock` are byte-identical to the base
+commit. Nothing was suppressed and nothing was bumped to hide a finding.
+
+**Proof that the scan is not vacuous.** A control run against a deliberately
+known-vulnerable pin (`pip==24.0`, not a project dependency) was used to
+confirm that the tooling does report advisories and exits non-zero:
+
+```
+$ printf 'pip==24.0\n' > /tmp/self-test-vuln.txt
+$ uvx pip-audit -r /tmp/self-test-vuln.txt -s osv -f columns
+Found 12 known vulnerabilities in 1 package
+Name Version ID              Fix Versions
+---- ------- --------------- ------------
+pip  24.0    PYSEC-2026-1795 25.3
+pip  24.0    PYSEC-2026-2875 26.1
+pip  24.0    PYSEC-2026-1796 26.0
+pip  24.0    PYSEC-2026-2876 26.1
+pip  24.0    PYSEC-2026-3721 26.2.0
+pip  24.0    PYSEC-2026-196  26.1.2
+pip  24.0    PYSEC-2026-1795 25.3
+pip  24.0    PYSEC-2026-1796 26.0
+pip  24.0    PYSEC-2026-196  26.1.2
+pip  24.0    PYSEC-2026-2875 26.1
+pip  24.0    PYSEC-2026-2876 26.1
+pip  24.0    PYSEC-2026-3721 26.2
+$ echo $?
+1
+```
+
+The duplicate rows are the same advisories returned through two OSV aliases;
+they are reproduced here exactly as the tool printed them.
+
+**Caveats of this scan (state them, do not hide them):**
+
+- The result is only as good as the OSV/PyPI advisory data **at the moment of
+  the run**. It is a point-in-time check, not a subscription.
+- `uv audit` is an **experimental** `uv` command; the warning is printed on
+  every run.
+- Only the **Python** dependency set is covered. Container images, the base
+  OS, the Streamlit front end assets and the provider SDKs are **not** scanned.
+- No SBOM is produced, nothing is signed, and no image scan was performed.
+- The scan is a **local command**: nothing runs it automatically, it is not
+  scheduled, and a regression introduced later would not be caught until an
+  operator runs it again. There is no hosted runner and no CI job for it.
+- `pip-audit` runs in an ephemeral `uvx` environment; it does not appear in
+  `pyproject.toml` or `uv.lock`.
+
+### 3. Test suite
+
+```
+$ uv run --no-sync python -m pytest -q
+169 passed, 16 skipped, 1 warning in 7.70s
+```
+
+(148 pre-existing tests still pass, plus 21 new spend-report tests. The 16
+skips are the opt-in PostgreSQL drill, which needs `ADVISORY_PG_DRILL_URL`.)
+
+`ruff check` and `ruff format --check` are clean on the two new files. The
+repository-wide lint gate remains OPEN for pre-existing findings in files this
+work did not touch.
+
+### 4. Still open after this work
+
+- [ ] Alerting, thresholds, dashboards and a scheduled provider-spend job.
+- [ ] A hosted CI job that runs the dependency scan on every change, plus
+      container image scanning, SBOM generation and signature verification.
+- [ ] Independent penetration test.
+- [ ] Every other gate in this file. **Do not record P5-04 or P5-05 as
+      complete because this section exists.**
