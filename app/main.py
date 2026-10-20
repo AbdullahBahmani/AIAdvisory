@@ -28,14 +28,18 @@ from app.services.discovery import QUESTIONS, summarize_discovery
 from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request, render_metrics
 
 #: Schema revisions this build can serve. ``0008_portfolio`` is the previous
-#: head and stays supported; ``0010_index_and_constraint_hardening`` adds the
-#: tenant-path indexes and the step-order uniqueness constraint. Both run the
-#: same application code, so either revision is a healthy database.
+#: head and stays supported; ``0009_local_attribution`` and
+#: ``0010_index_and_constraint_hardening`` add the tenant-path indexes and the
+#: step-order uniqueness constraint; ``0014_credential_lifecycle`` adds the
+#: credential lifecycle columns (explicit expiry, rotation overlap) and the
+#: organization scope of audit events. The lifecycle columns are required by
+#: the running code, so a database that has not applied them is not ready.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
         "0009_local_attribution",
         "0010_index_and_constraint_hardening",
+        "0014_credential_lifecycle",
     }
 )
 

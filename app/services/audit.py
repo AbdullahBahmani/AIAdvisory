@@ -1,6 +1,6 @@
 """The single audit gate.
 
-Every audit event in the application is written through :func:`audit`, so the rules about
+Every audit event in the application is written through this module, so the rules about
 who may be named as the actor are enforced in exactly one place:
 
 * the actor is always the **server-side principal**, never a value taken from the request
@@ -12,6 +12,15 @@ who may be named as the actor are enforced in exactly one place:
 This module exists so that services (not just API routes) can write audit events without
 importing a router. Before it existed, the provenance ledger wrote its row directly and
 silently omitted the identity flags.
+
+Two scopes exist:
+
+* :func:`audit` writes an event that belongs to one assessment and is attributed to the
+  principal of the current request.
+* :func:`audit_tenant` writes an event that belongs to an organization rather than to a
+  single assessment (credential issuance, rotation, revocation, de-provisioning). It is
+  used by the operator CLI, which runs outside a request and therefore has no principal:
+  such events keep their explicit, **unverified** operator actor.
 """
 
 from __future__ import annotations
@@ -39,4 +48,41 @@ def audit(
     details.setdefault("identity_source", principal.source)
     db.add(
         AuditRow(assessment_id=row.id, event_type=event, actor=principal.subject, details=details)
+    )
+
+
+def audit_tenant(
+    db: Session,
+    event: str,
+    *,
+    organization_id: str | None,
+    actor: str,
+    verified: bool = False,
+    source: str = "operator_cli",
+    assessment_id: str | None = None,
+    **details,
+) -> None:
+    """Record an audit event that is scoped to an organization, not to one assessment.
+
+    Credential and membership lifecycle changes (issue, rotate, revoke,
+    de-provision, sweep) belong to the organization as a whole. They are still
+    auditable: the event carries the tenant scope, the actor and the same
+    provenance flags as every other event.
+
+    An operator command is **not** a verified human identity: unless the caller
+    explicitly passes ``verified=True`` (never done by the operator CLI) the
+    event stays marked unverified, exactly like the synthetic demo identity.
+    """
+    details.setdefault("identity_unverified", not verified)
+    details.setdefault("identity_source", source)
+    db.add(
+        AuditRow(
+            assessment_id=assessment_id,
+            organization_id=organization_id,
+            event_type=event,
+            actor=actor,
+            actor_organization_id=organization_id,
+            actor_verified=verified,
+            details=details,
+        )
     )

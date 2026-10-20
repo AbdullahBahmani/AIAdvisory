@@ -2,6 +2,10 @@
 
 Never exposes deletion over HTTP. Backups must be encrypted and governed by the
 operator's retention policy. PostgreSQL operators should use pg_dump/pg_restore.
+
+The credential and membership sweep follows the same convention as the purge
+below: it **reports** by default and only changes something with an explicit
+``--execute``.
 """
 
 from __future__ import annotations
@@ -17,6 +21,11 @@ from sqlalchemy import select
 
 from app.db.models import AssessmentRow
 from app.db.session import DATABASE_URL, SessionLocal
+from app.services.credential_lifecycle import (
+    OPERATOR_ACTOR,
+    SweepReport,
+    sweep_lifecycle,
+)
 
 
 def sqlite_database_path() -> Path:
@@ -80,6 +89,22 @@ def purge_soft_deleted(organization_id: str, before: datetime, execute: bool = F
         return count
 
 
+def sweep_membership_lifecycle(
+    organization_id: str | None = None, execute: bool = False
+) -> SweepReport:
+    """Report (and with ``execute`` repair) credential and membership drift.
+
+    Nothing is changed and nothing is audited unless ``execute`` is True.
+    """
+    with SessionLocal.begin() as db:
+        return sweep_lifecycle(
+            db,
+            organization_id=organization_id,
+            actor=OPERATOR_ACTOR,
+            execute=execute,
+        )
+
+
 def main():
     p = argparse.ArgumentParser(
         description="Local, explicitly scoped maintenance; no hosted runners"
@@ -93,9 +118,30 @@ def main():
     purge.add_argument(
         "--execute", action="store_true", help="Required to actually delete anything"
     )
+    sweep = sub.add_parser(
+        "sweep-membership-lifecycle",
+        help="Report (and with --execute repair) credential and membership drift",
+    )
+    sweep.add_argument(
+        "--organization-id", default=None, help="Limit the sweep to one organization"
+    )
+    sweep.add_argument(
+        "--execute", action="store_true", help="Required to actually change anything"
+    )
     args = p.parse_args()
     if args.command == "backup-sqlite":
         print("Backup created:", backup_sqlite(Path(args.output)))
+    elif args.command == "sweep-membership-lifecycle":
+        report = sweep_membership_lifecycle(args.organization_id, execute=args.execute)
+        print(
+            f"{'Sweep executed' if args.execute else 'Dry run:'} {len(report.findings)} finding(s)"
+        )
+        for finding in report.findings:
+            status = finding.action_taken or finding.severity
+            blocked = f" [BLOCKED: {finding.blocked_reason}]" if finding.blocked_reason else ""
+            print(f"- {finding.kind}: {finding.description} -> {status}{blocked}")
+        if not args.execute:
+            print("Nothing was changed. Re-run with --execute to apply the findings.")
     else:
         try:
             timestamp = datetime.fromisoformat(args.before)

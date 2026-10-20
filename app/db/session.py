@@ -17,7 +17,8 @@ engine = create_engine(
 # provide them is not ready for this code, whatever its version string says.
 REQUIRED_SCHEMA_COLUMNS: dict[str, tuple[str, ...]] = {
     "reviews": ("reviewer_organization_id",),
-    "audit_events": ("actor_organization_id", "actor_verified"),
+    "audit_events": ("actor_organization_id", "actor_verified", "organization_id"),
+    "api_credentials": ("unlimited", "overlap_until", "replaced_by_id"),
 }
 
 
