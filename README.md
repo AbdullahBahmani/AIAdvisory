@@ -130,6 +130,7 @@ hosted CI; **do not enable GitHub Actions runners**.
 - [ADR-0003: Guarded structured AI](docs/decisions/0003-structured-ai.md)
 - [ADR-0004: Read-only reports and offline evaluations](docs/decisions/0004-reports-offline-evaluation.md)
 - [Evaluation fixtures and caveats](docs/evaluation.md)
+- [Ranking calibration harness (P9-05)](docs/calibration.md)
 - [Demo runbook](docs/demo.md)
 - [Main implementation planner](main-planner.md)
 
