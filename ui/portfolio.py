@@ -172,6 +172,89 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
                     f"Simple payback: {scenario['payback_periods'] or 'Not established'} periods · "
                     f"Source: {scenario['assumption_source']} · illustrative only"
                 )
+    with st.expander("Assumption sensitivity (advisory)"):
+        st.caption(
+            "How wrong the entered assumptions would have to be before the modelled net "
+            "savings turn negative. Default ranges are a documented modelling convention, "
+            "not market data. This is a forecast, not measured ROI."
+        )
+        for scenario in scenarios or []:
+            envelope = _request(
+                st, base, "GET", f"{root}/value-scenarios/{scenario['id']}/sensitivity"
+            )
+            if envelope is None:
+                continue
+            with st.container(border=True):
+                st.write(f"**{scenario['name']}** · {envelope['currency']} / {envelope['period']}")
+                rows = []
+                for dimension in envelope["dimensions"]:
+                    band = dimension.get("band")
+                    net_range = dimension.get("net_savings_range")
+                    breakeven = dimension["breakeven"]
+                    if breakeven["status"] == "available":
+                        breakeven_text = (
+                            f"{breakeven['value']} "
+                            f"({'exact' if breakeven['value_is_exact'] else 'rounded rendering'})"
+                        )
+                    else:
+                        breakeven_text = f"Unavailable ({breakeven.get('reason')})"
+                    rows.append(
+                        {
+                            "Assumption": dimension["assumption"],
+                            "Entered value": (
+                                dimension["base_value"]
+                                if dimension["base_value"] is not None
+                                else "Unknown"
+                            ),
+                            "Analysed range": (
+                                f"{band['low']} – {band['high']}" if band else "Unavailable"
+                            ),
+                            "Net savings range": (
+                                f"{net_range['low']} – {net_range['high']}"
+                                if net_range
+                                else "Unavailable"
+                            ),
+                            "Breakeven (net = 0)": breakeven_text,
+                        }
+                    )
+                st.dataframe(rows, hide_index=True, use_container_width=True)
+                st.caption(envelope["disclaimer"])
+    with st.expander("Compare scenarios (one currency and period)"):
+        st.caption(
+            "Scenarios are compared side by side only when they share a currency and a "
+            "period. A mixed currency or period is refused; nothing is converted."
+        )
+        by_id = {scenario["id"]: scenario for scenario in scenarios or []}
+        chosen = st.multiselect(
+            "Scenarios to compare",
+            options=list(by_id),
+            format_func=lambda key: by_id[key]["name"],
+            key=f"compare_{aid}",
+        )
+        if len(chosen) >= 2 and st.button("Compare selected scenarios", key=f"compare_go_{aid}"):
+            query = "&".join(f"scenario_ids={scenario_id}" for scenario_id in chosen)
+            comparison = _request(st, base, "GET", f"{root}/value-scenarios/comparison?{query}")
+            if comparison is not None:
+                st.dataframe(
+                    [
+                        {
+                            "Rank": row["rank"],
+                            "Scenario": row["name"],
+                            "Net savings": f"{row['net_savings']} {row['currency']}",
+                            "Gross savings": f"{row['gross_savings']} {row['currency']}",
+                            "Payback (periods)": (
+                                row["payback_periods"]
+                                if row["payback_periods"] is not None
+                                else "Not established"
+                            ),
+                            "Stale": row["stale"],
+                        }
+                        for row in comparison["rows"]
+                    ],
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.caption(comparison["disclaimer"])
     with st.expander("Create an illustrative scenario"):
         with st.form(f"scenario_{aid}", clear_on_submit=True):
             name = st.text_input("Scenario name", max_chars=120)
