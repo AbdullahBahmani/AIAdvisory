@@ -87,9 +87,9 @@ entry is not reachable.
 ```python
 from app.localization import Translator, t
 
-translator = Translator("nb")      # a translator for one locale
-translator.t("report.section.executive_summary")   # "Sammendrag for ledelsen"
-t("report.section.executive_summary")              # the active translator
+translator = Translator("nb")  # a translator for one locale
+translator.t("report.section.executive_summary")  # "Sammendrag for ledelsen"
+t("report.section.executive_summary")  # the active translator
 ```
 
 `app/localization/engine.py` resolves an id in this order:
@@ -251,7 +251,7 @@ that way:
 
 ```python
 def format_currency(amount, currency, locale):
-    exponent = CURRENCY_EXPONENTS.get(currency, 2)      # NOK: 2, JPY: 0
+    exponent = CURRENCY_EXPONENTS.get(currency, 2)  # NOK: 2, JPY: 0
     number = to_decimal(amount).quantize(Decimal(1).scaleb(-exponent), rounding=ROUND_HALF_UP)
     ...
 ```
