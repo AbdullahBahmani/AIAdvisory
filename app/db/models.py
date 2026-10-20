@@ -224,10 +224,11 @@ class ReviewRow(Base):
 class AuditRow(Base):
     """One append-only audit event.
 
-    An event belongs either to a single assessment (``assessment_id``) or to
-    an organization (``organization_id``). Organization-scoped events record
-    credential and membership lifecycle changes, which are not about one
-    assessment but still have to be attributable and exportable.
+    Every row belongs to exactly one assessment. Organization-scoped events -
+    credential and membership lifecycle changes, SCIM provisioning, approval
+    policy changes - live in their own ``organization_audit_events`` table, so
+    that this table keeps the invariant the tamper-evident per-assessment chain
+    relies on: a row here is always part of one assessment's decision history.
     """
 
     __tablename__ = "audit_events"
@@ -236,11 +237,8 @@ class AuditRow(Base):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    assessment_id: Mapped[str | None] = mapped_column(
+    assessment_id: Mapped[str] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
-    )
-    organization_id: Mapped[str | None] = mapped_column(
-        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
     )
     event_type: Mapped[str] = mapped_column(String(70))
     actor: Mapped[str] = mapped_column(String(200), default="local_demo")

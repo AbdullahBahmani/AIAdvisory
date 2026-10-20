@@ -69,7 +69,6 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, tuple[str, ...]] = {
         "actor_verified",
         "sequence",
         "chain_hash",
-        "organization_id",
     ),
     "api_credentials": ("unlimited", "overlap_until", "replaced_by_id"),
 }

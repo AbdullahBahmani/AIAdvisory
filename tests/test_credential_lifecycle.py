@@ -33,11 +33,11 @@ import scripts.admin as admin_cli
 from app.db.models import (
     ApiCredentialRow,
     AssessmentRow,
-    AuditRow,
     OidcMembershipRow,
     OrganizationRow,
     ReviewerAssignmentRow,
 )
+from app.db.provisioning_models import OrganizationAuditEventRow
 from app.db.session import get_db
 from app.main import app
 from app.security import (
@@ -176,10 +176,19 @@ def assign_reviewer(
 
 
 def audit_event_types(db: Session, organization_id: str | None = None) -> list[str]:
-    query = select(AuditRow.event_type)
+    """The event types recorded for an organization.
+
+    Credential and membership lifecycle events are organization-scoped, not
+    assessment-scoped, so they live in the organization audit ledger rather than
+    in ``audit_events``. That table keeps the invariant that every row belongs to
+    one assessment, which is what the per-assessment tamper-evident chain relies
+    on, so a lifecycle event can never be mistaken for part of a decision
+    history.
+    """
+    query = select(OrganizationAuditEventRow.event_type)
     if organization_id is not None:
-        query = query.where(AuditRow.organization_id == organization_id)
-    return list(db.scalars(query.order_by(AuditRow.created_at, AuditRow.id)).all())
+        query = query.where(OrganizationAuditEventRow.organization_id == organization_id)
+    return list(db.scalars(query.order_by(OrganizationAuditEventRow.created_at)).all())
 
 
 def authenticated_routes() -> list[tuple[str, str]]:
@@ -259,9 +268,9 @@ def test_use_of_an_expired_credential_is_audited(api, engine):
     with Session(engine) as db:
         events = list(
             db.scalars(
-                select(AuditRow).where(
-                    AuditRow.event_type == "credential.use_rejected",
-                    AuditRow.organization_id == organization_id,
+                select(OrganizationAuditEventRow).where(
+                    OrganizationAuditEventRow.event_type == "credential.use_rejected",
+                    OrganizationAuditEventRow.organization_id == organization_id,
                 )
             ).all()
         )
@@ -286,9 +295,9 @@ def test_revoked_credential_is_rejected_and_audited(api, engine):
     with Session(engine) as db:
         events = list(
             db.scalars(
-                select(AuditRow).where(
-                    AuditRow.event_type == "credential.use_rejected",
-                    AuditRow.organization_id == organization_id,
+                select(OrganizationAuditEventRow).where(
+                    OrganizationAuditEventRow.event_type == "credential.use_rejected",
+                    OrganizationAuditEventRow.organization_id == organization_id,
                 )
             ).all()
         )
@@ -563,9 +572,13 @@ def test_deactivating_a_member_clears_the_reviewer_assignment(session, engine):
         assert "membership.disabled" in events
         assert "reviewer.assignment_cleared" in events
         cleared = db.scalars(
-            select(AuditRow).where(AuditRow.event_type == "reviewer.assignment_cleared")
+            select(OrganizationAuditEventRow).where(
+                OrganizationAuditEventRow.event_type == "reviewer.assignment_cleared"
+            )
         ).all()
-        assert cleared[0].assessment_id == assessment.id
+        # The assessment is recorded as a detail: a lifecycle event is
+        # organization-scoped, not part of the assessment's own decision history.
+        assert cleared[0].details["assessment_id"] == assessment.id
 
 
 def test_the_unreviewable_assessment_can_be_assigned_to_somebody_else(session, engine, api):
@@ -629,7 +642,9 @@ def test_the_last_administrator_is_not_removed_without_an_explicit_override(sess
     with Session(engine) as db:
         assert db.get(ApiCredentialRow, credential.id).revoked_at is not None
         events = db.scalars(
-            select(AuditRow).where(AuditRow.event_type == "membership.role_changed")
+            select(OrganizationAuditEventRow).where(
+                OrganizationAuditEventRow.event_type == "membership.role_changed"
+            )
         ).all()
         assert events[0].details["last_admin_override"] is True
 
@@ -793,7 +808,7 @@ def test_every_lifecycle_change_is_audited(session, engine):
         ]:
             assert expected in events, (expected, events)
         # Operator actions are auditable but never a verified human identity.
-        rows = db.scalars(select(AuditRow)).all()
+        rows = db.scalars(select(OrganizationAuditEventRow)).all()
         assert all(row.actor_verified is False for row in rows)
         assert all(row.actor.startswith("operator") for row in rows)
         assert all(row.details["identity_unverified"] is True for row in rows)

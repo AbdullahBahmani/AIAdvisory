@@ -240,9 +240,17 @@ def audit_tenant(
     """
     details.setdefault("identity_unverified", not verified)
     details.setdefault("identity_source", source)
+    if assessment_id:
+        # Recorded as a detail, not as the event's scope. A credential lifecycle
+        # change is not part of the assessment's decision history, and an operator
+        # command runs outside a request, so it has no request principal to derive
+        # an actor from.
+        details.setdefault("assessment_id", assessment_id)
+    # An organization-scoped event lives in the organization ledger, NOT in
+    # audit_events: that table keeps the invariant that every row belongs to one
+    # assessment, which is what the per-assessment chain relies on.
     db.add(
-        AuditRow(
-            assessment_id=assessment_id,
+        OrganizationAuditEventRow(
             organization_id=organization_id,
             event_type=event,
             actor=actor,
