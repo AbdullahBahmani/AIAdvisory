@@ -20,13 +20,14 @@ from html import escape as html_escape
 from app.domain.persistence import AssessmentDetail
 from app.domain.portfolio import ProvenanceView
 from app.localization import DEFAULT_LOCALE, Translator
+from app.reporting.diagrams import Diagram, build_task_diagram, describe, render_mermaid, render_svg
 
-REPORT_VERSION = "4.0"
+REPORT_VERSION = "4.1"
 
 
 @dataclass(frozen=True)
 class Block:
-    kind: str  # "text", "bullets", "table", or "code"
+    kind: str  # "text", "bullets", "table", "code" or "diagram"
     value: object
 
 
@@ -67,6 +68,10 @@ def _table(translator: Translator, headers: list[str], rows: list[list[object]])
         "table",
         (headers, [[_line(translator, cell) for cell in row] for row in rows]),
     )
+
+
+def _diagram(diagram: Diagram) -> Block:
+    return Block("diagram", diagram)
 
 
 def _provenance_blocks(translator: Translator, provenance: ProvenanceView) -> list[Block]:
@@ -679,13 +684,41 @@ def build_sections(
         ),
         _text(
             translator.t(
-                "report.proposals.unverified_intro",
-                "The following are optional, unverified AI proposals. "
-                "They are neither accepted requirements nor definitive architectural, "
-                "evaluation, or regulatory conclusions.",
+                "report.proposals.diagram_intro",
+                "The diagrams below show the simplest adequate starting pattern for each "
+                "task, drawn deterministically from the recorded recommendation category "
+                "and the triggered rules. A diagram is guidance, not an implementation.",
             )
         ),
     ]
+    for task in analysis.tasks:
+        proposal_blocks.append(_diagram(build_task_diagram(task, translator)))
+        proposal_blocks.append(
+            _text(
+                translator.t(
+                    "report.proposals.diagram_notes",
+                    "Required controls for {task}: {controls}.",
+                    task=task.task_id,
+                    controls=(
+                        ", ".join(task.recommendation.required_controls)
+                        if task.recommendation.required_controls
+                        else translator.t("report.value.none_recorded", "None recorded")
+                    ),
+                )
+            )
+        )
+    proposal_blocks.extend(
+        [
+            _text(
+                translator.t(
+                    "report.proposals.unverified_intro",
+                    "The following are optional, unverified AI proposals. "
+                    "They are neither accepted requirements nor definitive architectural, "
+                    "evaluation, or regulatory conclusions.",
+                )
+            ),
+        ]
+    )
     for entry in proposals:
         stale = entry.get("assessment_revision") != detail.revision
         proposal_blocks.append(
@@ -879,6 +912,14 @@ def render_markdown(
                 lines.append("")
             elif block.kind == "code":
                 lines += ["    " + line for line in str(block.value).splitlines()] + [""]
+            elif block.kind == "diagram":
+                diagram = block.value
+                lines += [render_mermaid(diagram), ""]
+                # A plain-text description keeps the picture readable in any
+                # Markdown renderer, including one without Mermaid support.
+                lines += [
+                    "> " + line for line in describe(diagram).splitlines()
+                ] + [""]
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -901,6 +942,9 @@ def render_html(
         "border-collapse:collapse;margin:14px 0;}th,td{border:1px solid #d0d7e2;padding:8px;"
         "text-align:left;vertical-align:top;overflow-wrap:anywhere;}th{background:#edf2f7;}"
         "pre{overflow:auto;background:#f3f6fa;padding:14px;}li{margin:5px 0;} "
+        "figure{margin:18px 0;padding:12px;border:1px solid #d0d7e2;border-radius:8px;}"
+        "figure svg{max-width:100%;height:auto;display:block;}"
+        "figcaption{margin-top:10px;font-size:13px;color:#5b636d;} "
         ".notice{color:#7d2b2b;font-weight:700;}</style>",
         "</head><body><h1>" + html_escape(detail.title) + "</h1>",
         '<p class="notice">'
@@ -937,6 +981,15 @@ def render_html(
                 parts.append("</tbody></table>")
             elif block.kind == "code":
                 parts.append("<pre>" + html_escape(str(block.value)) + "</pre>")
+            elif block.kind == "diagram":
+                diagram = block.value
+                parts.append(
+                    "<figure>"
+                    + render_svg(diagram)
+                    + "<figcaption>"
+                    + html_escape(diagram.caption)
+                    + "</figcaption></figure>"
+                )
         parts.append("</section>")
     parts.append("</body></html>\n")
     return "\n".join(parts)

@@ -53,6 +53,7 @@ APP_DIR = ROOT / "app"
 #: The modules that own translatable strings.
 SOURCES = (
     APP_DIR / "reporting" / "render.py",
+    APP_DIR / "reporting" / "diagrams.py",
     UI_DIR / "streamlit_app.py",
     UI_DIR / "collaboration.py",
     UI_DIR / "portfolio.py",
@@ -480,10 +481,13 @@ def analyzed(client):
     return aid, _stable_detail(detail)
 
 
-#: The SHA-256 of the English report as the product shipped it before the
-#: localization work.  Any change to the English artefact breaks this test.
-ENGLISH_MARKDOWN_SHA256 = "4bb281155bcd5204225b3f914cefb6e0286802751726aea747000075afaf4556"
-ENGLISH_HTML_SHA256 = "f37b93f9d2f7bc5c12a6da1c67b4a648456cd1df33cc67ff94b48ecf2669a3be"
+#: The SHA-256 of the English report as the product ships it.  Any change to
+#: the English artefact breaks this test.  Re-baselined on 2026-10-20 when the
+#: deterministic architecture-pattern diagrams were added to the export; the
+#: intent is unchanged — the English export must stay byte-stable, and the
+#: locale must never be what changes it.
+ENGLISH_MARKDOWN_SHA256 = "b7205b6c710f31ca7b6ed4745ff2e2c6e4489365e2d57f3044ac092b098f6243"
+ENGLISH_HTML_SHA256 = "39f6a76ad28548aac0b3eb81905f9206b7868f68b2e7392889feb3f753e7a65d"
 
 
 def test_the_english_report_is_byte_identical_to_the_previous_artefact(analyzed) -> None:

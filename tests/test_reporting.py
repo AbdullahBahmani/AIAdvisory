@@ -70,6 +70,21 @@ def test_html_escapes_untrusted_input_and_markdown_does_not_inject_headings(clie
     assert "\\# Illegal heading" in md
 
 
+def test_the_report_carries_an_architecture_diagram(client):
+    """The Markdown and the HTML export must both carry the diagram."""
+    aid = analyzed_id(client)
+    md = client.get(f"/api/v1/assessments/{aid}/report?format=markdown").text
+    html = client.get(f"/api/v1/assessments/{aid}/report?format=html").text
+    assert "```mermaid" in md
+    assert "flowchart LR" in md
+    assert "<svg" in html
+    assert "Architecture pattern for task" in md
+    assert "<figure>" in html
+    # The diagram must not become an escape hatch into the HTML document.
+    assert "<script" not in html
+    assert "http://" not in html.replace('xmlns="http://www.w3.org/2000/svg"', "")
+
+
 def test_review_remains_unverified_in_report(client):
     aid = analyzed_id(client)
     reviewer = client.post(
