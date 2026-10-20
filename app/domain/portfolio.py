@@ -205,3 +205,24 @@ class PocPlanView(PocPlanIn):
     stale: bool
     observations: list[PocObservationView]
     advisory_only: bool = True
+
+
+class AttachmentView(BaseModel):
+    """Provenance of one stored evidence attachment.
+
+    `stale` follows the portfolio convention: an attachment is stale when the
+    assessment revision it was bound to is no longer the current revision.
+    """
+
+    id: str
+    assessment_id: str
+    assessment_revision: int
+    evidence_id: str | None
+    display_name: str
+    download_name: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    uploaded_by: str
+    uploaded_at: datetime
+    stale: bool

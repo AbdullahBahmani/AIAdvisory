@@ -7,8 +7,9 @@ calls an LLM, authorizes business actions or changes the deterministic rule engi
 from __future__ import annotations
 
 from decimal import Decimal
+from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,6 +26,7 @@ from app.db.models import (
 )
 from app.db.session import get_db
 from app.domain.portfolio import (
+    AttachmentView,
     EvidenceIn,
     EvidenceView,
     PocObservationIn,
@@ -37,11 +39,15 @@ from app.domain.portfolio import (
     ValueScenarioView,
 )
 from app.security import current_principal, require_role
+from app.services import attachments
 from app.services.approval_chain import require_completed_approvals
 from app.services.audit import audit
 from app.services.portfolio import priority_result, value_projection
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio-intelligence"])
+
+ATTACHMENT_FILENAME_HEADER = "x-attachment-filename"
+ATTACHMENT_TYPE_HEADER = "x-attachment-content-type"
 
 
 def _fresh(row: AssessmentRow) -> bool:
@@ -344,6 +350,202 @@ def verify_evidence(assessment_id: str, evidence_id: str, db: Session = Depends(
     audit(db, row, "portfolio.evidence_verified", evidence_id=item.id, revision=row.revision)
     db.commit()
     return _evidence_view(item, row.revision)
+
+
+def _attachment_view(record: attachments.AttachmentRecord, revision: int) -> AttachmentView:
+    return AttachmentView(
+        id=record.id,
+        assessment_id=record.assessment_id,
+        assessment_revision=record.assessment_revision,
+        evidence_id=record.evidence_id,
+        display_name=record.display_name,
+        download_name=attachments.download_filename(record.display_name, record.content_type),
+        content_type=record.content_type,
+        size_bytes=record.size_bytes,
+        sha256=record.sha256,
+        uploaded_by=record.uploaded_by,
+        uploaded_at=record.uploaded_at,
+        stale=record.assessment_revision != revision,
+    )
+
+
+def _attachment_or_404(
+    db: Session, row: AssessmentRow, attachment_id: str
+) -> attachments.AttachmentRecord:
+    """Resolve an attachment inside the caller's organization or fail closed."""
+    record = attachments.load_record(attachments.storage_root(), row.id, attachment_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    principal = current_principal(db)
+    if not principal.demo and (
+        record.organization_id is None
+        or record.organization_id != principal.organization_id
+        or row.organization_id != principal.organization_id
+    ):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    return record
+
+
+def _declared_content_type(request: Request) -> str:
+    declared = request.headers.get(ATTACHMENT_TYPE_HEADER)
+    if declared:
+        return declared
+    request_type = request.headers.get("content-type", "")
+    media_type = request_type.split(";")[0].strip().lower()
+    if media_type and media_type not in {"application/octet-stream", "multipart/form-data"}:
+        return media_type
+    return "application/octet-stream"
+
+
+def _declared_filename(request: Request) -> str | None:
+    raw = request.headers.get(ATTACHMENT_FILENAME_HEADER)
+    if raw is None:
+        return None
+    try:
+        return unquote(raw, encoding="utf-8", errors="strict")
+    except (UnicodeDecodeError, ValueError):
+        return None
+
+
+async def _limited_attachment_body(request: Request) -> bytes:
+    """Read the upload body with a hard ceiling; never buffer an unbounded file."""
+    limit = attachments.max_bytes()
+    declared_length = request.headers.get("content-length")
+    if declared_length and declared_length.isdigit() and int(declared_length) > limit:
+        raise HTTPException(status_code=413, detail=f"Attachment exceeds the {limit} byte limit")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=413, detail=f"Attachment exceeds the {limit} byte limit"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.get(
+    "/assessments/{assessment_id}/evidence-attachments", response_model=list[AttachmentView]
+)
+def list_evidence_attachments(
+    assessment_id: str,
+    evidence_id: str | None = Query(default=None, max_length=64),
+    db: Session = Depends(get_db),
+):
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    records = attachments.list_records(attachments.storage_root(), row.id)
+    if evidence_id is not None:
+        records = [record for record in records if record.evidence_id == evidence_id]
+    return [_attachment_view(record, row.revision) for record in records]
+
+
+@router.post(
+    "/assessments/{assessment_id}/evidence-attachments",
+    response_model=AttachmentView,
+    status_code=201,
+)
+async def add_evidence_attachment(
+    assessment_id: str,
+    request: Request,
+    evidence_id: str | None = Query(default=None, max_length=64),
+    db: Session = Depends(get_db),
+):
+    """Store one attachment outside every web-served directory.
+
+    The request body is the raw file; the original name and the declared media
+    type travel in headers because they are untrusted metadata. The on-disk
+    name is always a server-generated opaque token.
+    """
+    require_role(db, "analyst")
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    check_mutable(row)
+    _ensure_current(db, row)
+    if evidence_id is not None:
+        linked = db.scalar(
+            select(OpportunityEvidenceRow).where(
+                OpportunityEvidenceRow.id == evidence_id,
+                OpportunityEvidenceRow.assessment_id == row.id,
+            )
+        )
+        if linked is None:
+            raise HTTPException(status_code=404, detail="Evidence not found")
+    data = await _limited_attachment_body(request)
+    principal = current_principal(db)
+    try:
+        record = attachments.store_attachment(
+            root=attachments.storage_root(),
+            assessment_id=row.id,
+            assessment_revision=row.revision,
+            uploaded_by=principal.subject,
+            filename=_declared_filename(request),
+            declared_content_type=_declared_content_type(request),
+            data=data,
+            evidence_id=evidence_id,
+            organization_id=row.organization_id,
+        )
+    except attachments.AttachmentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from None
+    row.updated_at = utcnow()
+    audit(
+        db,
+        row,
+        "portfolio.attachment_added",
+        attachment_id=record.id,
+        revision=row.revision,
+        size_bytes=record.size_bytes,
+        content_type=record.content_type,
+        sha256=record.sha256,
+    )
+    db.commit()
+    return _attachment_view(record, row.revision)
+
+
+@router.get("/assessments/{assessment_id}/evidence-attachments/{attachment_id}/download")
+def download_evidence_attachment(
+    assessment_id: str, attachment_id: str, db: Session = Depends(get_db)
+):
+    """Serve an attachment as an inert download; never render it in our origin."""
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    record = _attachment_or_404(db, row, attachment_id)
+    data = attachments.read_blob(attachments.storage_root(), record.id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    filename = attachments.download_filename(record.display_name, record.content_type)
+    headers = {
+        "Content-Disposition": attachments.content_disposition(filename),
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox; frame-ancestors 'none'",
+        "Cache-Control": "no-store",
+        "X-Attachment-Sha256": record.sha256,
+        "X-Attachment-Assessment-Revision": str(record.assessment_revision),
+        "X-Attachment-Stale": "true" if record.assessment_revision != row.revision else "false",
+    }
+    return Response(content=data, media_type="application/octet-stream", headers=headers)
+
+
+@router.delete("/assessments/{assessment_id}/evidence-attachments/{attachment_id}", status_code=204)
+def delete_evidence_attachment(
+    assessment_id: str, attachment_id: str, db: Session = Depends(get_db)
+):
+    """Delete an attachment and remove the stored file from disk."""
+    require_role(db, "analyst")
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    check_mutable(row)
+    _ensure_current(db, row)
+    record = _attachment_or_404(db, row, attachment_id)
+    if not attachments.delete_attachment(attachments.storage_root(), row.id, record.id):
+        raise HTTPException(status_code=404, detail="Attachment not found")
+    row.updated_at = utcnow()
+    audit(
+        db,
+        row,
+        "portfolio.attachment_deleted",
+        attachment_id=record.id,
+        revision=row.revision,
+    )
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.get("/assessments/{assessment_id}/value-scenarios", response_model=list[ValueScenarioView])
