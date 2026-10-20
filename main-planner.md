@@ -156,7 +156,39 @@ Implement named, unit-tested rules returning machine-readable rule ID, trigger i
 - **PRIV-001:** Data sensitivity/provider permissions unknown → block sending that information to an external model until reviewed.
 - **EVID-001:** Critical inputs missing → more discovery required; no definitive ROI/feasibility claims.
 
-These rule IDs are proposed implementation identifiers (not existing repo code). Override UI may capture the FDE's rationale, but **hard approval, privacy, and authorization gates stay enforced**.
+These rule IDs were proposed implementation identifiers before any code existed. **They are now
+real code** — see the implemented catalogue below. Override UI may capture the FDE's rationale,
+but **hard approval, privacy, and authorization gates stay enforced**.
+
+#### Implemented rule catalogue (reconciled 2026-10-20)
+
+The implementation carries **13** rules, not the 8 originally listed above. The five extra rules
+were added during implementation and are part of the enforced precedence. Every rule below is
+emitted by `app/services/rule_engine.py`, appears in the analysis snapshot, is rendered in the
+report, and is counted by the evaluation runner's per-rule firing rates.
+
+| Rule | Severity | Trigger | Effect on the recommendation |
+| --- | --- | --- | --- |
+| `HUM-001` | `HUMAN_ONLY` | Legal commitment, employment decision or medical decision | Human-led. Highest precedence — nothing overrides it. |
+| `PRIV-002` | `BLOCK_PROVIDER_DATA` | The workflow has no permission to use the data | More discovery. Second precedence. |
+| `SAFE-001` | `BLOCK_AUTONOMOUS_AI` | Zero-error tolerance with no independent verification | Human-led unless a reviewer is available. |
+| `EVID-001` | `NEED_EVIDENCE` | High consequence with unknown human-review availability | More discovery. |
+| `EVID-002` | `NEED_EVIDENCE` | Task input characteristics are entirely unknown | More discovery. |
+| `EVID-003` | `NEED_EVIDENCE` | No reliable task data available | More discovery. |
+| `PRIV-001` | `BLOCK_PROVIDER_DATA` | Sensitive data and provider permission not proven | More discovery. |
+| `ACT-001` | `REQUIRE_APPROVAL` | Irreversible **and** high-consequence action | Human-led without a reviewer; more discovery if the reviewer is unknown; AI + human approval otherwise. |
+| `ACT-002` | `REQUIRE_APPROVAL` | Approval-required business action (modify customer record, cancel order, issue refund, transfer money, delete data) | Same precedence as `ACT-001`. |
+| `VALUE-001` | `PREFERENCE` | Modelled net savings below the evidenced threshold | Human-led (no-project may be preferable). |
+| `DET-001` | `PREFERENCE` | Fully deterministic task with known stable rules | Traditional software. |
+| `MATH-001` | `PREFERENCE` | Exact arithmetic | Traditional software. |
+| `DATA-001` | `PREFERENCE` | Requires an authoritative lookup | Supports the hybrid pattern (AI interprets, code retrieves facts). |
+
+**On overriding.** An FDE may record a review that departs from the recommended category, but
+only with an explicit `override_reason` (enforced by `validate_review_category`). That override
+changes the *recorded category*; it does not remove the rule hit, does not remove the required
+controls, and does not bypass the approval chain. The report keeps showing the rule hits and
+the controls the task still needs, so a reviewer who overrides a privacy or approval gate sees
+exactly which gate they are overriding.
 
 ### 5.2 Scoring and explainability
 
