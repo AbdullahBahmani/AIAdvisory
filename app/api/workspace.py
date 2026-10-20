@@ -39,7 +39,14 @@ from app.domain.collaboration import (
     WorkspaceSummary,
 )
 from app.security import ROLE_LEVEL, current_principal, require_role
-from app.services.approval_chain import STAGES, current_chain
+from app.services.approval_chain import STAGES
+from app.services.approval_policy import (
+    contribution_conflict,
+    effective_policy,
+    policy_aware_chain,
+    record_vote_binding,
+    required_role,
+)
 from app.services.audit import audit
 
 router = APIRouter(prefix="/api/v1", tags=["workspace"])
@@ -223,7 +230,7 @@ def add_comment(assessment_id: str, payload: CommentCreate, db: Session = Depend
 @router.get("/assessments/{assessment_id}/approvals", response_model=ApprovalSummary)
 def get_approvals(assessment_id: str, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
-    states, _ = current_chain(db, row)
+    states, _ = policy_aware_chain(db, row)
     history = db.scalars(
         select(ApprovalRow)
         .where(
@@ -249,8 +256,12 @@ def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Dep
         raise HTTPException(
             status_code=403, detail="Enterprise approval requires an authenticated reviewer"
         )
-    require_role(db, "admin" if payload.stage == "business" else "reviewer")
     row = get_or_404(db, AssessmentRow, assessment_id)
+    # The organization may narrow the roles that may approve a stage; the
+    # platform default (reviewer/admin for technical and security, admin for
+    # business) applies until it does.
+    policy, policy_version = effective_policy(db, row.organization_id)
+    require_role(db, required_role(policy, payload.stage))
     db.refresh(row, with_for_update=True)
     assert_current_revision(row)
     if row.status in {"deleted", "finalized"}:
@@ -259,14 +270,19 @@ def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Dep
         raise HTTPException(
             status_code=409, detail="Analyze this assessment revision before approval"
         )
-    states, actors = current_chain(db, row)
+    states, actors = policy_aware_chain(db, row)
     position = STAGES.index(payload.stage)
     if position and states.get(STAGES[position - 1]) != "approved":
         raise HTTPException(status_code=409, detail="Previous approval stage is not approved")
-    if p.subject in (actors.get(s) for s in STAGES[:position]):
+    if not policy.allow_same_person_two_stages and p.subject in (
+        actors.get(s) for s in STAGES[:position]
+    ):
         raise HTTPException(
             status_code=409, detail="Each approval stage requires a different reviewer"
         )
+    conflict = contribution_conflict(db, row, payload.stage, p.subject, policy)
+    if conflict is not None:
+        raise HTTPException(status_code=409, detail=conflict)
     vote = ApprovalRow(
         assessment_id=row.id,
         assessment_revision=row.revision,
@@ -277,6 +293,9 @@ def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Dep
     )
     db.add(vote)
     db.flush()  # preserve concrete vote ID in append-only audit history
+    # Bind the vote to the policy version that applied to it, so a later
+    # policy change can invalidate exactly the approvals it affected.
+    record_vote_binding(db, row, vote, p.role, policy_version)
     row.updated_at = utcnow()  # row-version bump serializes parallel votes
     assigned = _assignment(db, row.id)
     if assigned and assigned.reviewer_subject != p.subject:

@@ -9,9 +9,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.advisor import router as advisor_router
+from app.api.approval_policies import router as approval_policies_router
 from app.api.assessments import router as assessments_router
 from app.api.portfolio import router as portfolio_router
 from app.api.reports import router as reports_router
+from app.api.scim import router as scim_router
 from app.api.workspace import router as workspace_router
 from app.db.session import get_db, schema_is_current
 from app.deployment import check_deployment_configuration
@@ -25,17 +27,21 @@ from app.domain.schemas import (
 from app.security import Principal, authenticate_request
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
+from app.services.scim_errors import SCIM_CONTENT_TYPE, ScimError
 from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request, render_metrics
 
 #: Schema revisions this build can serve. ``0008_portfolio`` is the previous
-#: head and stays supported; ``0010_index_and_constraint_hardening`` adds the
-#: tenant-path indexes and the step-order uniqueness constraint. Both run the
-#: same application code, so either revision is a healthy database.
+#: head and stays supported; ``0009_local_attribution`` adds the local actor
+#: attribution columns; ``0010_index_and_constraint_hardening`` adds the
+#: tenant-path indexes and the step-order uniqueness constraint. ``0012`` adds
+#: the SCIM provisioning and approval-policy tables. All of them run the same
+#: application code, so any of these revisions is a healthy database.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
         "0009_local_attribution",
         "0010_index_and_constraint_hardening",
+        "0012_scim_provisioning",
     }
 )
 
@@ -52,6 +58,21 @@ app = FastAPI(
 async def stale_write_conflict(_request, _exc):
     return JSONResponse(
         status_code=409, content={"detail": "Assessment changed concurrently; reload and retry"}
+    )
+
+
+@app.exception_handler(ScimError)
+async def scim_error(_request, exc: ScimError):
+    """Render a SCIM failure with the SCIM error schema.
+
+    SCIM clients read the failure from the body, so the endpoint must not
+    answer with the platform's generic ``{"detail": ...}`` shape.
+    """
+    return JSONResponse(
+        status_code=exc.status,
+        content=exc.payload(),
+        media_type=SCIM_CONTENT_TYPE,
+        headers={"WWW-Authenticate": "Bearer"} if exc.status == 401 else None,
     )
 
 
@@ -146,3 +167,11 @@ app.include_router(reports_router, dependencies=[Depends(authenticate_request)])
 app.include_router(workspace_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(portfolio_router, dependencies=[Depends(authenticate_request)])
+
+app.include_router(approval_policies_router, dependencies=[Depends(authenticate_request)])
+
+# The SCIM provisioning endpoint authenticates with its own dedicated bearer
+# token (see ``app/services/scim_auth.py``). It is deliberately *not* mounted
+# with ``authenticate_request``: the synthetic demo identity and the ordinary
+# user credentials must never reach it.
+app.include_router(scim_router)

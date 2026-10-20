@@ -5,6 +5,11 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+# The provisioning tables live in their own module (the assessment tables are
+# untouched). Importing it here registers them on the shared metadata, so
+# ``alembic check`` compares them with the migration chain instead of
+# reporting them as drift.
+import app.db.provisioning_models  # noqa: F401,E402
 from app.db.models import Base
 from app.db.session import DATABASE_URL
 
