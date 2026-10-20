@@ -29,6 +29,18 @@ from app.telemetry import instrument_request
 
 APP_VERSION = "0.8.0"
 
+#: Schema revisions this build can serve. ``0008_portfolio`` is the previous
+#: head and stays supported; ``0010_index_and_constraint_hardening`` adds the
+#: tenant-path indexes and the step-order uniqueness constraint. Both run the
+#: same application code, so either revision is a healthy database.
+SUPPORTED_SCHEMA_REVISIONS = frozenset(
+    {
+        "0008_portfolio",
+        "0009_local_attribution",
+        "0010_index_and_constraint_hardening",
+    }
+)
+
 check_deployment_configuration()
 
 app = FastAPI(
@@ -51,8 +63,10 @@ def readiness(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1 FROM organizations LIMIT 1")).all()
         current = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one_or_none()
-        # A version string alone is not evidence that the required columns exist.
-        if current not in {"0008_portfolio", "0009_local_attribution"} or not schema_is_current(db):
+        # A version string alone is not evidence that the required columns exist:
+        # schema_is_current inspects the live catalogue for every column the
+        # running code needs.
+        if current not in SUPPORTED_SCHEMA_REVISIONS or not schema_is_current(db):
             raise HTTPException(status_code=503, detail="Database migration not current")
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database not ready") from None
