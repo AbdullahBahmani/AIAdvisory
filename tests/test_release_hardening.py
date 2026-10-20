@@ -8,23 +8,21 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import AssessmentRow, Base, OidcMembershipRow, OrganizationRow, RequestLimitRow
+from app.db.models import AssessmentRow, OidcMembershipRow, OrganizationRow, RequestLimitRow
 from app.deployment import check_deployment_configuration
 from app.identity import oidc_identity
 from app.throttling import enforce_limit
 from scripts.maintenance import backup_sqlite, retention_candidates
+from tests.backend import BACKEND, POSTGRES
 
 
 @pytest.fixture
-def session(tmp_path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'test.sqlite3'}")
-    Base.metadata.create_all(engine)
-    with Session(engine) as db:
+def session(db_engine):
+    with Session(db_engine) as db:
         yield db
-    engine.dispose()
 
 
 def test_oidc_is_disabled_if_unconfigured(session, monkeypatch):
@@ -155,6 +153,13 @@ def test_atomic_database_rate_limit_and_isolation(session, monkeypatch):
     assert bad.value.status_code == 503
 
 
+@pytest.mark.skipif(
+    BACKEND == POSTGRES,
+    reason=(
+        "SQLite-specific: the offline backup uses the sqlite3 online-backup API, "
+        "which does not exist on PostgreSQL (PostgreSQL operators use pg_dump)"
+    ),
+)
 def test_offline_backup_integrity_and_no_overwrites(tmp_path, monkeypatch):
     import scripts.maintenance as maint
 
@@ -211,10 +216,9 @@ def test_production_never_boots_and_pilot_demo_bypass_fails(monkeypatch):
     check_deployment_configuration()
 
 
-def test_authenticated_route_is_rate_limited_cross_process_style(monkeypatch, tmp_path):
+def test_authenticated_route_is_rate_limited_cross_process_style(monkeypatch, db_engine):
     """One shared SQL bucket is enforced at the FastAPI authorization boundary."""
     from fastapi.testclient import TestClient
-    from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
     from app.db.models import ApiCredentialRow
@@ -222,10 +226,7 @@ def test_authenticated_route_is_rate_limited_cross_process_style(monkeypatch, tm
     from app.main import app
     from app.security import digest_token, make_token
 
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'http-limit.sqlite3'}", connect_args={"check_same_thread": False}
-    )
-    Base.metadata.create_all(engine)
+    engine = db_engine
     with Session(engine) as db:
         org = OrganizationRow(name="HTTP org")
         db.add(org)
@@ -258,4 +259,3 @@ def test_authenticated_route_is_rate_limited_cross_process_style(monkeypatch, tm
             assert client.get("/health").status_code == 200
     finally:
         app.dependency_overrides.clear()
-        engine.dispose()

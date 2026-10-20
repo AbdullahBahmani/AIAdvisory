@@ -1,40 +1,26 @@
-"""Integration tests use real SQLite transactions and no hosted runner/AI provider."""
-
-from pathlib import Path
+"""Integration tests use real database transactions and no hosted runner/AI provider."""
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 
-from app.db.models import Base
 from app.db.session import get_db
 from app.main import app
 from tests.fixtures.cases import AI_SUPPORT, EXACT_PRICING, HYBRID_REFUND
 
 
 @pytest.fixture
-def client(tmp_path: Path):
-    url = f"sqlite:///{tmp_path / 'demo.sqlite3'}"
-    engine = create_engine(url, connect_args={"check_same_thread": False})
-
-    @event.listens_for(engine, "connect")
-    def fk(dbapi_connection, _connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    Base.metadata.create_all(engine)
+def client(db_engine):
+    """A test client bound to an isolated database on the selected backend."""
 
     def override_db():
-        with Session(engine) as session:
+        with Session(db_engine) as session:
             yield session
 
     app.dependency_overrides[get_db] = override_db
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
-    engine.dispose()
 
 
 def create_assessment(client):
