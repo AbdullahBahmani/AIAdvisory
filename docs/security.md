@@ -93,7 +93,7 @@ OIDC access tokens are validated with pinned HTTPS issuer, audience, JWKS and al
 
 After authentication, API requests use SQL atomic per-subject/organization minute buckets; use a separate ingress limiter for unauthenticated traffic and protection against distributed attacks. SQLite is for local use; PostgreSQL is required for cross-replica storage. Request counts are prunable by operator command. The SQLite backup and retention CLI require explicit output paths, tenants and cutoffs; retention deletes related audit entries, so obtain policy/legal-hold approval first. `ADVISORY_DEPLOYMENT_MODE=production` refuses startup while external release gates remain unverified.
 
-## Local/demo actor attribution (2026-10-20, ADR-0009)
+## Local/demo actor attribution (2026-10-20, ADR-0014)
 
 `ADVISORY_DEMO_MODE=1` no longer answers every caller with one global identity. A
 presented credential is authenticated **exactly like the production path**: the

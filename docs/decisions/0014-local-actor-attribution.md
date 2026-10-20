@@ -1,4 +1,4 @@
-# ADR-0009: Verified, organization-scoped actor attribution in local/demo mode
+# ADR-0014: Verified, organization-scoped actor attribution in local/demo mode
 
 **Status:** Accepted for local/demo and access-controlled pilot source code.
 **Date:** 2026-10-20
