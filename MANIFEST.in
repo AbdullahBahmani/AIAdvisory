@@ -1,0 +1,2 @@
+# The localization catalogues are data files and must ship with the package.
+recursive-include app/localization/locales *.json
