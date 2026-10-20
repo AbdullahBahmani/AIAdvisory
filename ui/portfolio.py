@@ -5,6 +5,8 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from urllib.error import HTTPError, URLError
 
+from ui.accessibility import heading
+
 
 def _request(st, base: str, method: str, path: str, body=None):
     from ui.streamlit_app import _api_error, api_request
@@ -134,8 +136,8 @@ def _decimal(text: str, label: str) -> str:
     return str(value)
 
 
-def render_portfolio_dashboard(st, base: str) -> None:
-    st.subheader("AI opportunity portfolio")
+def render_portfolio_dashboard(st, base: str, level: int = 2) -> None:
+    heading(st, "AI opportunity portfolio", level)
     st.caption(
         "Planning scores are provisional, not validated business value or AI rollout approval."
     )
@@ -172,6 +174,10 @@ def render_portfolio_dashboard(st, base: str) -> None:
                 "Missing": ", ".join(entry["priority"]["missing"]) or "—",
             }
         )
+    st.caption(
+        "Table: planning priority, evidence coverage and PoC outcomes per opportunity. "
+        "Planning priority is a provisional heuristic, not a validated ranking."
+    )
     st.dataframe(data, hide_index=True, use_container_width=True)
     st.caption("* Targets reflect self-reported observations and are not validated causal impacts.")
     by_id = {r["assessment_id"]: r for r in rows}
@@ -184,10 +190,10 @@ def render_portfolio_dashboard(st, base: str) -> None:
         st.rerun()
 
 
-def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
+def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3) -> None:
     aid = assessment["id"]
     root = f"/api/v1/assessments/{aid}"
-    st.subheader("Evidence and value intelligence")
+    heading(st, "Evidence and value intelligence", level)
     st.caption(f"Assessment revision {assessment['revision']} · Human-owned planning evidence only")
     profile = _request(st, base, "GET", root + "/portfolio-profile")
     if profile is not None:
@@ -219,7 +225,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
                 if _request(st, base, "PUT", root + "/portfolio-profile", rating):
                     st.rerun()
 
-    st.markdown("#### Evidence registry")
+    heading(st, "Evidence registry", level + 1)
     evidence = _request(st, base, "GET", root + "/evidence")
     if evidence is not None:
         for item in evidence:
@@ -261,7 +267,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
                 ):
                     st.rerun()
 
-    st.markdown("#### Evidence attachments")
+    heading(st, "Evidence attachments", level + 1)
     st.caption(
         "Files are stored outside the application, never served inline, and are "
         "readable only inside the owning organization. Allowed: PDF, TXT, MD, "
@@ -309,7 +315,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
             if _upload_attachment(st, base, aid, uploaded):
                 st.rerun()
 
-    st.markdown("#### ROI scenario simulator")
+    heading(st, "ROI scenario simulator", level + 1)
     st.caption(
         "Forecasts use only entered assumptions. "
         "All amounts share one currency and period; no FX conversion."
@@ -445,7 +451,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
                     if _request(st, base, "POST", root + "/value-scenarios", body):
                         st.rerun()
 
-    st.markdown("#### PoC outcomes")
+    heading(st, "PoC outcomes", level + 1)
     st.caption("Tracking marks progress in this app only; it never starts external workflows.")
     pocs = _request(st, base, "GET", root + "/pocs")
     if pocs is not None:

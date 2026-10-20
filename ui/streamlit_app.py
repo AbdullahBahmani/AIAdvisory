@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from ui.accessibility import apply_accessibility, heading
 from ui.reporting import render_report_tab
 
 DEFAULT_API_BASE_URL = "http://127.0.0.1:8000"
@@ -191,14 +192,14 @@ def _show_recommendations(st, result: dict) -> None:
                 }
             )
     if result.get("value"):
-        st.subheader("Illustrative business value (not validated ROI)")
+        heading(st, "Illustrative business value (not validated ROI)", 4)
         st.json(result["value"])
     for warning in result.get("warnings", []):
         st.warning(warning)
 
 
 def _dashboard(st, base_url: str) -> dict | None:
-    st.subheader("Assessments")
+    heading(st, "Assessments", 2)
     with st.expander("Create a new assessment", expanded=False):
         with st.form("create_assessment"):
             title = st.text_input("Assessment title")
@@ -265,6 +266,7 @@ def _dashboard(st, base_url: str) -> dict | None:
 
 def _intake(st, base_url: str, assessment: dict):
     aid = assessment["id"]
+    heading(st, "Intake", 3)
     with st.form(f"intake-{aid}"):
         title = st.text_input("Title", value=assessment["title"])
         organization = st.text_input("Organization", value=assessment["organization"] or "")
@@ -319,6 +321,7 @@ def _intake(st, base_url: str, assessment: dict):
 
 def _discovery(st, base_url: str, assessment: dict):
     aid = assessment["id"]
+    heading(st, "Discovery", 3)
     findings = api_request(base_url, "GET", f"/api/v1/assessments/{aid}/next-question")
     question = findings.get("next_question")
     if question:
@@ -368,6 +371,7 @@ def _discovery(st, base_url: str, assessment: dict):
 def _workflow(st, base_url: str, assessment: dict):
     aid = assessment["id"]
     locked = assessment["status"] == "finalized"
+    heading(st, "Workflow", 3)
     st.caption(
         "Create workflow → ordered step → one or more atomic tasks. "
         "Each task is evaluated separately."
@@ -378,7 +382,7 @@ def _workflow(st, base_url: str, assessment: dict):
             _change(st, base_url, "POST", f"/api/v1/assessments/{aid}/workflows", {"name": name})
     for workflow in assessment["workflows"]:
         wid = workflow["id"]
-        st.markdown(f"### {workflow['name']}")
+        heading(st, workflow["name"], 4)
         with st.form(f"step-create-{wid}"):
             step_name = st.text_input("New step name")
             position = st.number_input(
@@ -503,6 +507,7 @@ def _workflow(st, base_url: str, assessment: dict):
 
 def _analysis(st, base_url: str, assessment: dict):
     aid = assessment["id"]
+    heading(st, "Analysis", 3)
     if st.button(
         "Analyze saved workflows", disabled=assessment["status"] == "finalized", type="primary"
     ):
@@ -551,6 +556,7 @@ def request_ai_proposal(
 
 def _ai_advisor(st, base_url: str, assessment: dict):
     aid = assessment["id"]
+    heading(st, "AI advisor", 3)
     st.warning(
         "Experimental AI suggestions only. Synthetic or explicitly approved non-sensitive "
         "data; no production use, autonomous actions or rollout approvals."
@@ -678,6 +684,7 @@ def _ai_advisor(st, base_url: str, assessment: dict):
 
 def _review(st, base_url: str, assessment: dict):
     aid = assessment["id"]
+    heading(st, "FDE review", 3)
     st.warning(
         "Local demo review only. A typed reviewer name is NOT authenticated identity. "
         "No rollout approval."
@@ -730,6 +737,7 @@ def main() -> None:
     import streamlit as st
 
     st.set_page_config(page_title="AI Opportunity Advisor", page_icon="🧭", layout="wide")
+    apply_accessibility(st)
     st.title("AI Opportunity Advisor")
     st.caption("Phase 8 · Opportunity portfolios, value scenarios and measurable PoC outcomes")
     st.info("AI assists. Rules enforce. Data informs. Humans decide.")
@@ -760,10 +768,10 @@ def main() -> None:
             "Navigation", ["Assessments", "Workspace", "Portfolio"], key="primary_view"
         )
         if view == "Workspace":
-            render_workspace(st, base_url)
+            render_workspace(st, base_url, level=2)
             return
         if view == "Portfolio":
-            render_portfolio_dashboard(st, base_url)
+            render_portfolio_dashboard(st, base_url, level=2)
             return
         assessment = _dashboard(st, base_url)
         if assessment:
@@ -812,13 +820,13 @@ def main() -> None:
             with review:
                 _review(st, base_url, assessment)
             with report:
-                render_report_tab(st, base_url, assessment)
+                render_report_tab(st, base_url, assessment, level=3)
             with collaboration:
-                render_collaboration(st, base_url, assessment)
+                render_collaboration(st, base_url, assessment, level=3)
             with workspace:
-                render_workspace(st, base_url)
+                render_workspace(st, base_url, level=3)
             with portfolio:
-                render_assessment_portfolio(st, base_url, assessment)
+                render_assessment_portfolio(st, base_url, assessment, level=3)
         with st.expander("Stateless rules-only preview (legacy Phase 1)"):
             raw = st.text_area("Preview JSON", value=json.dumps(DEMO_PAYLOAD, indent=2), height=220)
             if st.button("Run preview"):
