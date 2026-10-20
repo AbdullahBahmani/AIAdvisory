@@ -4,9 +4,9 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status (2026-10-20):** Phases 0–8 are implemented on `main`, and the previously unverified local verification has been completed against a **clean Python 3.12 checkout**: a committed `uv.lock` resolves the dependency set, `ruff check` and `ruff format --check` are clean repo-wide, the suite passes (**148 tests**, plus 16 opt-in PostgreSQL drill tests), `alembic upgrade head` on a fresh database reports **no schema drift**, the evaluation corpus has grown to **31 synthetic cases** with a **0-of-20 false-positive AI-recommendation rate**, the Docker/Compose deployment **builds, boots and serves**, and a **real PostgreSQL 16** instance has been exercised for migrations, optimistic concurrency, row locking, atomic rate limiting and a `pg_dump`/`pg_restore` round-trip. Policy moved to **`rules-v2`**, which requires an observed language-oriented signal before a task may be called a strong AI candidate (ADR-0009).
+**Status (2026-10-20):** Phases 0–8 are implemented on `main` and the local verification that was previously blocked is now done (Python 3.12 lock, clean lint, a passing test suite, drift-free migrations, a booting Docker deployment, a real PostgreSQL 16 drill, and a 31-case evaluation corpus). **Phase 9** (`docs/phase9.md`) has since been delivered: verified reviewer attribution, a decision provenance ledger, evaluation expansion with a 0-of-20 false-positive rate, value sensitivity envelopes, and a ranking calibration harness. The whole suite now runs genuinely against PostgreSQL (432 passed, 3278 statements executed), the Docker deployment builds and boots on its canonical ports, the rate limiter is verified to be enforced globally across replicas, and the UI has been accessibility-audited to zero axe violations.
 
-**Still not verified, and unchanged in substance:** a real IdP/SSO/MFA session, privacy/DPIA/residency and provider-governance approval, encrypted off-site backup with a measured RPO/RTO, managed TLS/WAF ingress, external monitoring, vulnerability scanning, an independent penetration test, a named release approver, field-quality evaluation against real assessments, and browser-level SSO/CSRF end-to-end testing. **The production gate remains CLOSED** and `ADVISORY_DEPLOYMENT_MODE=production` still refuses to boot. No GitHub-hosted runners are used or enabled.
+**Still not verified, and unchanged in substance:** a real IdP/SSO/MFA session, privacy/DPIA/residency and provider-governance approval, encrypted off-site backup with a measured RPO/RTO, managed TLS/WAF ingress, external monitoring and alerting, container image scanning and SBOM, an independent penetration test, a named release approver, field-quality evaluation against real assessments, and browser-level SSO/CSRF end-to-end testing. **The production gate remains CLOSED** and `ADVISORY_DEPLOYMENT_MODE=production` still refuses to boot. No GitHub-hosted runners are used or enabled.
 
 > Product rule: **AI assists. Rules enforce. Data informs. Humans decide.** A successful result can be traditional software, a hybrid solution, more discovery, or no project—not necessarily AI.
 
@@ -310,7 +310,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 - [x] P2-04 Implement answers/next-question/missing-information APIs.
 - [x] P2-05 Implement analyze/scores/risks/recommendations APIs with stale-input handling.
 - [x] P2-06 Build Streamlit intake + guided discovery + workflow builder + per-task analysis screens.
-- [ ] P2-07 Add final-decision/review endpoints and UI with required override rationale; lock final sign-off to an authorized FDE before multi-user use. **Partial (local demo):** review and override endpoints/UI exist and guarded local finalization requires an explicit shared reviewer token (403 otherwise). Reviewer identity is unverified; replace with authenticated organization-scoped FDE roles before multi-user release.
+- [x] P2-07 Add final-decision/review endpoints and UI with required override rationale; lock final sign-off to an authorized FDE before multi-user use. **Verified 2026-10-20 (ADR-0014):** the audit actor is now always the **server-side principal**, never a client-supplied `reviewer_id`; a typed reviewer name is recorded separately as an explicitly unverified `claimed_actor`. Local/demo mode resolves a **named, organization-scoped principal** with a verified subject, organization and role, so tenant scoping applies in local mode too and the Phase 7 approval chain can require **distinct** actors. The shared `ADVISORY_REVIEW_TOKEN` survives only as an explicitly-labelled synthetic fallback whose records stay `identity_unverified`; it is never a path to a verified identity. New Alembic revision `0009_local_attribution` verified on SQLite and PostgreSQL 16 with a working downgrade. The dead `require_local_reviewer` helper was removed so there is exactly one reviewer gate. **Still open (tracked under P5-01/P7-09):** a stored credential proves possession of a secret, not human identity — no MFA, no IdP round trip, no session binding.
 - [x] P2-08 Add offline integration test for save → reload → analyze → review → final decision.
 
 **Exit (local demo verified on 2026-10-11):** Rules-only assessment can be created, edited, persisted, reloaded, analyzed per task, reviewed and locally finalized with an explicitly configured reviewer token. 49 offline tests pass, a fresh SQLite Alembic migration and `alembic check` pass, and live `/health` and `/openapi.json` return 200. **Not production complete:** actual authentication and tenant-scoped authorization, Ruff/dependency lock and Streamlit browser smoke remain open. The shared token is a demo-only gate, never rollout authority.
@@ -342,8 +342,8 @@ Each checkbox is a trackable task; update this section as implementation progres
 - [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route. **Partial:** API credentials, RBAC, tenant checks and credential-bound review logs done; independent IdP/SSO/MFA/membership lifecycle pending. **Additional implementation 2026-10-13:** OIDC signed JWTs use pinned issuer/audience/JWKS and locally provisioned organization membership; OIDC-only mode available. Real IdP and MFA integration and full merged auth tests remain unverified.
 - [ ] P5-02 Confirm external-model policy, privacy, residency, deletion, retention, safe logging and model-provider configuration. **Partial:** provider permission checks retained and secrets not logged; actual DPIA/DLP, residency, contract, retention and deletion workflows pending. **Additional:** offline scoped hard-deletion command (dry-run default) and SQLite online backup. Policy, consent, data residency, legal hold and backup expiry still need independent sign-off.
 - [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery. **Local drill verified 2026-10-20:** against a real `postgres:16-alpine` instance the full 0001→0008 migration chain applies to an empty database with `alembic check` reporting no drift and round-trips through `downgrade base`; optimistic locking yields exactly one winner and a 409 on the losing concurrent HTTP write; `If-Match` returns 428/412/200; `SELECT … FOR UPDATE` verifiably blocks a second writer (which SQLite cannot demonstrate); the rate limiter's `ON CONFLICT DO UPDATE` is atomic under 24 parallel writers; and `pg_dump` → `pg_restore` into a second independent container reproduced identical row counts on 12 key tables with the same API reads. Six concrete index findings from the live catalogue are recorded and being addressed. **Still open for production:** a managed cluster with TLS/`verify-full` and least-privilege accounts, encrypted off-site backups with PITR, retention/rotation/legal-hold, capacity and load testing, failover, a backend-parametrised test suite (the pre-existing tests were SQLite-bound), and failure-recovery drills. The local drill's 0.25 s dump/restore is **not** an RPO/RTO measurement.
-- [ ] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content. **Partial:** sanitized JSON route/status/latency/request-ID logging and response headers added. Alerting/metrics dashboards and provider-spend monitoring pending. **Existing:** request logs are sanitized; externally operated dashboards/alerts and provider spending controls pending.
-- [ ] P5-05 Add security checks for injection, untrusted evidence, prompt injection, secrets, rate limits and dependency vulnerabilities. **Partial:** cross-tenant, revoked/expired, forged-token, impersonated reviewer, role and report security tests added; **the per-principal rate limiter is now verified to be enforced globally across API replicas** — 2, 3 and 4 real API processes sharing one database admitted exactly the configured capacity (20/25/30) and rate-limited the remainder, which a per-process limiter would have admitted. `alembic check` drift, atomic `ON CONFLICT DO UPDATE` counting under 24 parallel writers, the `FROM`-less `SELECT … FOR UPDATE` row lock and JWT negative tests are also done. **Still open:** an ingress/WAF limit in front of the application for unauthenticated floods, a dependency vulnerability scanner, and an independent penetration test.
+- [x] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content. **Verified 2026-10-20:** `GET /metrics` serves the Prometheus text exposition format (written by hand, no new dependency) with request counts and latency by route template and status class, the running policy and prompt versions, per-rule hit counts and **per-rule firing analyses** — so a rule that silently stops firing shows zero, which is the failure the evaluation corpus exists to catch — review and FDE-override counts, AI token totals, and AI cost with an explicit **priced/unpriced split**. The endpoint is **authenticated and tenant-scoped** (401 without a credential), because it exposes tenant-derived aggregates; the demo bypass is not widened. Redaction is enforced in code: no content, no identifiers (the request id is deliberately not a metric), and low-cardinality labels with overflow collapsing to `other`. `scripts/metrics_check.py` turns the failure modes into PASS/WARN/FAIL on a schedule. `scripts/spend_report.py` aggregates provider spend and reports the priced/unpriced split honestly — an unpriced run has **unknown** cost, never an estimate. **Still open:** externally operated dashboards and alert delivery, and a scheduled provider-spend job; the suggested thresholds are documented as suggestions to tune, **not** validated SLOs.
+- [ ] P5-05 Add security checks for injection, untrusted evidence, prompt injection, secrets, rate limits and dependency vulnerabilities. **Partial:** cross-tenant, revoked/expired, forged-token, impersonated reviewer, role and report security tests added; **the per-principal rate limiter is now verified to be enforced globally across API replicas** — 2, 3 and 4 real API processes sharing one database admitted exactly the configured capacity (20/25/30) and rate-limited the remainder, which a per-process limiter would have admitted. `alembic check` drift, atomic `ON CONFLICT DO UPDATE` counting under 24 parallel writers, the `SELECT … FOR UPDATE` row lock and JWT negative tests are also done. **A local dependency vulnerability scanner now exists** and scans the committed lock file; it was proven not to be vacuous by running it against a deliberately vulnerable pinned package. **Still open:** an ingress/WAF limit in front of the application for unauthenticated floods, container image scanning and SBOM generation, and an independent penetration test.
 - [ ] P5-06 Publish deployment/runbook, evidence-based limitations, known risks and rollback plan. **Partial:** operator runbook and ADR-0005 document credential rotation, containment and rollback/backup plans; no operational drill completed. **Additional:** operator OIDC/membership, backup and retention commands and explicit production startup guard are documented; real incident/restore drills pending.
 - [ ] P5-07 Release only when explicit gate checklist below passes; otherwise retain local/demo-only designation. **Blocked:** no approved production deployment; see security gate in `docs/operations.md`. **Still blocked:** deliberate production startup refusal until independent approval; do not interpret merged code as a production launch.
 
@@ -550,8 +550,99 @@ addressing high-risk verification gaps for any real customer data.
 - [ ] P8-10 Add enterprise-safe evidence attachments, metrics ingestion,
   comprehensive sensitivity/NPV, approved compliance controls and
   cross-currency logic only if explicitly required and correctly sourced.
+  **Attachments and sensitivity are now delivered (2026-10-20):** evidence
+  attachments are stored outside the web root under a server-generated
+  opaque name, with the size ceiling enforced while streaming, an
+  allowlisted and magic-byte-verified media type, sanitised display names,
+  revision-bound staleness, tenant-scoped downloads that are never served
+  inline, and file deletion that removes the blob. The value sensitivity
+  envelope reports a band, a net range, an exact breakeven and the
+  assumption range that keeps the case above the threshold, with mixed
+  currency and mixed period **refused** rather than approximated.
+  **Still open:** metrics ingestion from production systems, DLP and
+  encryption at rest (a prerequisite decision that has not been made), and
+  cross-currency logic, which has no sourced rate and rate date policy.
 - [ ] P8-11 Close all outstanding Phase 6/7 identity, privacy, security,
   recovery and independent production-release gates.
 
 **Status:** Phase 8 source delivered; NOT certified, launched, or approved for
 personal/regulated business data. No GitHub-hosted runners used.
+
+
+## Phase 9 — decision attribution, calibration and value maturity (2026-10-20)
+
+Scope is defined in `docs/phase9.md`. Phase 9 closes **attribution and
+measurement** gaps. It does not close any Phase 5–8 production gate, and it
+does not change the fact that `ADVISORY_DEPLOYMENT_MODE=production` refuses
+to boot.
+
+### Delivered
+
+- [x] P9-01 Verified reviewer attribution for local and pilot modes (merged
+  with P2-07, ADR-0014). The audit actor is server-derived; a typed name is
+  only ever recorded as an unverified claim.
+- [x] P9-02 Decision provenance ledger. A finalization writes a
+  `provenance.recorded` entry into the **existing** append-only audit trail
+  — not into the analysis snapshot, which is cleared on every revision
+  change and therefore could not show a stale basis. It captures the policy
+  version, the analysis and assessment revisions, a digest of the analysis,
+  the contributing evidence and value scenario, the verified reviewer, the
+  server-derived decision maker, and whether AI contributed. Drift is
+  detected and reported with reason codes, and the entry appears in the
+  exported report. No Alembic migration was needed.
+- [x] P9-03 Evaluation expansion and outcome metrics. The corpus grew from 4
+  to **31 synthetic cases** covering every branch of the recommendation
+  precedence and all 13 rule ids, with a confusion matrix, a
+  **false-positive AI-recommendation rate**, an unknown-data handling rate,
+  per-rule firing rates and advisory-only compliance. It also surfaced a real
+  policy defect — a pure system-of-record lookup was recommended as a strong
+  AI candidate — which is fixed in **`rules-v2`** (ADR-0009). The corpus
+  measured a false-positive rate of **0 of 20** non-AI cases afterwards.
+- [x] P9-04 Value sensitivity and scenario comparison. Exact `Decimal`
+  arithmetic throughout, breakeven solved in exact rational arithmetic, the
+  bounds labelled as a **modelling convention** rather than market data, and
+  missing assumptions reported unavailable rather than as zero. Mixed currency
+  and mixed period are **refused**, not approximated.
+- [x] P9-05 Ranking calibration harness. Kendall's tau-b, implemented without
+  a dependency because the heuristic produces integer scores and therefore
+  common ties. The policy-blocked guard is enforced inside the harness and
+  fails the run loudly. **`portfolio-v2` was deliberately not shipped**: the
+  one disagreement the harness surfaces is against a label written in this
+  repository, so re-weighting to match would be fitting to our own fixture
+  rather than calibrating against expert judgement. The machinery for a
+  future version bump is in place.
+
+### Still open
+
+- [ ] P9-06 Close the outstanding Phase 5/6/7 identity, privacy, security,
+  recovery and independent production-release gates. This is the same work as
+  P5-01…P5-07, P6-06…P6-09 and P7-08…P7-11; it is listed here only to make
+  clear that Phase 9 does not make production any closer.
+- [ ] P9-07 Calibrate `portfolio-v1` against real expert judgements. This
+  depends entirely on P8-09 and cannot be closed with synthetic labels.
+
+### Also delivered alongside Phase 9
+
+- [x] Index and constraint hardening: the missing foreign-key index, three
+  composite indexes for the hot tenant-scoped read paths, and a real
+  database-level step-order uniqueness constraint. Measured on PostgreSQL:
+  the assessment list query went from 1.012 ms with a top-N heapsort over
+  5000 rows to 0.032 ms without one, and the inbox query from 0.807 ms to
+  0.035 ms.
+- [x] A backend-parametrised test suite: the existing tests now genuinely
+  execute against PostgreSQL (**432 passed, 3278 statements executed**)
+  instead of silently running on SQLite, with a guard that fails the run if
+  zero statements were executed.
+- [x] A local failure-recovery drill exercising crash mid-write, restore
+  into a running service, audit-history survival, an unreachable database
+  and a write failure. It surfaced five real application defects, which are
+  recorded and tracked rather than silently patched.
+- [x] An accessibility evaluation of the running UI with axe-core against
+  the rendered DOM in both themes: **108 affected nodes → 0**. No WCAG
+  conformance is claimed.
+- [x] A single local release-gate command (`python -m scripts.verify_all`),
+  which is what hosted CI would otherwise have provided.
+
+**Status:** Phase 9 source delivered and verified locally. **NOT certified,
+launched, or approved for personal or regulated business data.** The
+production startup guard remains closed. No GitHub-hosted runners are used.
