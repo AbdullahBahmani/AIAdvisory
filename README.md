@@ -150,6 +150,7 @@ hosted CI; **do not enable GitHub Actions runners**.
 - [ADR-0013: PDF export is not MVP-critical](docs/decisions/0013-pdf-export-not-mvp-critical.md)
 - [Phase 9 plan: attribution, calibration and value maturity](docs/phase9.md)
 - [Evaluation fixtures and caveats](docs/evaluation.md)
+- [Ranking calibration harness (P9-05)](docs/calibration.md)
 - [Demo runbook](docs/demo.md)
 - [Main implementation planner](main-planner.md)
 
