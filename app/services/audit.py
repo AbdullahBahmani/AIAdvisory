@@ -9,11 +9,6 @@ who may be named as the actor are enforced in exactly one place:
 * every event records whether the actor was verified and where the identity came from, so
   an unverified synthetic demo decision can never be read as a verified human decision.
 
-Each event is also chained: it carries its position in the assessment's audit chain and a
-hash over its own canonical content chained onto the previous event's hash. The chain alone
-detects an in-place alteration; the out-of-database high-water mark (see
-``app/services/audit_chain.py``) is what detects a *rollback*, which is what a restore does.
-
 This module exists so that services (not just API routes) can write audit events without
 importing a router. Before it existed, the provenance ledger wrote its row directly and
 silently omitted the identity flags.
@@ -29,6 +24,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import AssessmentRow, AuditRow
+from app.db.provisioning_models import OrganizationAuditEventRow
 from app.services.audit_chain import (
     GENESIS_HASH,
     HighWaterMark,
@@ -43,9 +39,9 @@ _CHAIN_RETRIES = 3
 def _normalize_timestamp(value: datetime) -> datetime:
     """Return the timestamp as an aware UTC datetime.
 
-    SQLite does not store timezone information, so a value read back from the database is
-    naive even though it was written as UTC. Normalising on both sides keeps the chain
-    hash stable across a write and a later read.
+    SQLite does not store timezone information, so a value read back from the
+    database is naive even though it was written as UTC. Normalising on both
+    sides keeps the chain hash stable across a write and a later read.
     """
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
@@ -60,6 +56,26 @@ def _last_chain_event(db: Session, assessment_id: str) -> AuditRow | None:
         .order_by(AuditRow.sequence.desc(), AuditRow.created_at.desc())
         .limit(1)
     ).first()
+
+
+def stamp_actor(row) -> None:
+    """Copy the server-side principal onto an audit row.
+
+    The actor is always taken from the session principal, never from request
+    input. Rows written outside a request keep their explicit actor and stay
+    marked unverified.
+    """
+    from sqlalchemy.orm import object_session
+
+    session = object_session(row)
+    principal = session.info.get("principal") if session is not None else None
+    if principal is None:
+        row.actor_verified = False
+        row.actor_organization_id = None
+        return
+    row.actor = principal.subject
+    row.actor_organization_id = principal.organization_id
+    row.actor_verified = bool(principal.verified)
 
 
 def audit(
@@ -159,3 +175,33 @@ def _persist_audit_marks(session: Session) -> None:
             logging.getLogger("aiadvisory.audit").warning(
                 '{"event": "audit.high_water_mark_write_failed"}'
             )
+
+
+def audit_organization(
+    db: Session, organization_id: str, event: str, *, actor: str | None = None, **details
+) -> None:
+    """Record an organization-scoped audit event attributed to the principal.
+
+    Some events are about the organization, not about one assessment: an
+    automated provisioning run that creates or deactivates an identity, or a
+    change to the organization's approval policy. They go through the same gate
+    as the assessment ledger, so the "the actor is always the server-side
+    principal, never request input" rule is enforced in exactly one place.
+    """
+    from app.security import current_principal
+
+    principal = current_principal(db)
+    if actor and actor != principal.subject:
+        details["claimed_actor"] = actor
+    details.setdefault("identity_unverified", not principal.verified)
+    details.setdefault("identity_source", principal.source)
+    db.add(
+        OrganizationAuditEventRow(
+            organization_id=organization_id,
+            event_type=event,
+            actor=principal.subject,
+            actor_organization_id=principal.organization_id,
+            actor_verified=bool(principal.verified),
+            details=details,
+        )
+    )

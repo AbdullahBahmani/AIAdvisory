@@ -62,7 +62,9 @@ def _apply_statement_timeout(dbapi_connection, connection_record):  # noqa: ARG0
 # provide them is not ready for this code, whatever its version string says.
 REQUIRED_SCHEMA_COLUMNS: dict[str, tuple[str, ...]] = {
     "reviews": ("reviewer_organization_id",),
-    "audit_events": ("actor_organization_id", "actor_verified"),
+    # The chain columns are required: the running code writes them on every audit
+    # event, so a database without them is not one this build can serve.
+    "audit_events": ("actor_organization_id", "actor_verified", "sequence", "chain_hash"),
 }
 
 
