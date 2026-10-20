@@ -80,7 +80,27 @@ DATABASE = os.getenv("RECOVERY_DRILL_DATABASE", "aiadvisory")
 PASSWORD = os.getenv("RECOVERY_DRILL_PASSWORD", "local_recovery_drill_only_pw")
 KEEP = os.getenv("RECOVERY_DRILL_KEEP") == "1"
 
-HEAD_REVISION = "0008_portfolio"
+
+def _derive_head_revision() -> str:
+    """The current head revision, derived from the migration chain.
+
+    Deriving it rather than hard-coding it means a new migration does not make the
+    drill report a false "the schema was corrupted" finding, and a stale constant
+    cannot silently stop checking what it claims to check.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = Path(__file__).resolve().parent.parent
+    config = Config(str(repo_root / "alembic.ini"))
+    config.set_main_option("script_location", str(repo_root / "migrations"))
+    heads = ScriptDirectory.from_config(config).get_heads()
+    if len(heads) != 1:
+        raise RuntimeError(f"the migration chain must have exactly one head, found {heads}")
+    return heads[0]
+
+
+HEAD_REVISION = _derive_head_revision()
 
 # ---------------------------------------------------------------------------
 # Pure analysis layer: no Docker, no network, no database.
@@ -333,31 +353,66 @@ def classify_audit_history_survival(obs: dict[str, Any]) -> Verdict:
     lost_after_restore = obs.get("lost_after_restore") or []
     if lost_after_restore:
         affected = obs.get("affected_assessments") or []
-        notes.append(
-            f"LOUD FINDING: the restore rewound the audit history of "
-            f"{len(affected)} assessment(s) by {len(lost_after_restore)} event(s). "
-            "The API keeps returning HTTP 200 with the shortened trail and there "
-            "is no marker, counter or signal that the history was rewound: a "
-            "reader cannot tell a rewound trail from a trail that never had "
-            "those events."
-        )
+        detected = obs.get("rollback_detected_by_application")
+        if detected:
+            notes.append(
+                f"LOUD FINDING, BUT DETECTED: the restore rewound the audit history of "
+                f"{len(affected)} assessment(s) by {len(lost_after_restore)} event(s). "
+                "The underlying limitation is unchanged - the trail lives in the same "
+                "database as the data it describes, so anything that can roll the "
+                "database back can roll the trail back. What has changed is that the "
+                "loss is no longer SILENT: the application reports it. The audit "
+                "history response carries X-Audit-Rollback-Detected, and the integrity "
+                "endpoint reports the rollback with the marked and actual sequence "
+                f"({obs.get('integrity_marked_sequence')!r} vs "
+                f"{obs.get('integrity_actual_sequence')!r})."
+            )
+        else:
+            notes.append(
+                f"LOUD FINDING: the restore rewound the audit history of "
+                f"{len(affected)} assessment(s) by {len(lost_after_restore)} event(s). "
+                "The API keeps returning HTTP 200 with the shortened trail and there "
+                "is no marker, counter or signal that the history was rewound: a "
+                "reader cannot tell a rewound trail from a trail that never had "
+                "those events."
+            )
         notes.append("Lost audit events:")
         for event in lost_after_restore[:20]:
             notes.append(
                 f"  {event.get('assessment_id')} {event.get('event_type')} "
                 f"actor={event.get('actor')} at {event.get('created_at')}"
             )
-        findings.append(
-            "The audit trail is not append-only across a restore: "
-            f"{len(lost_after_restore)} event(s) were silently lost."
-        )
-        if obs.get("decision_evidence_lost"):
+        if obs.get("rollback_detected_by_application"):
             findings.append(
-                "The lost events include the human final decision "
-                "('fde.finalized'). The evidence that a human decided is gone, "
-                "the assessment is silently back in review, and the API reports "
-                "HTTP 200 with no indication that a decision record was lost."
+                "The audit trail is still not append-only across a restore: "
+                f"{len(lost_after_restore)} event(s) were lost. The application now "
+                "DETECTS and REPORTS the rollback, so the loss is not silent, but the "
+                "trail still lives in the same database as the data it describes and a "
+                "real deployment needs the mark in an external append-only sink."
             )
+        else:
+            findings.append(
+                "The audit trail is not append-only across a restore: "
+                f"{len(lost_after_restore)} event(s) were silently lost."
+            )
+        if obs.get("decision_evidence_lost"):
+            if obs.get("rollback_detected_by_application"):
+                findings.append(
+                    "The lost events include the human final decision "
+                    "('fde.finalized'). The evidence that a human decided is gone "
+                    "and the assessment is back in review - and the application now "
+                    "reports that rollback, so a reader is not left believing a "
+                    "decision was taken. The underlying storage limitation stands: "
+                    "a production deployment needs the audit mark in an external "
+                    "append-only sink."
+                )
+            else:
+                findings.append(
+                    "The lost events include the human final decision "
+                    "('fde.finalized'). The evidence that a human decided is gone, "
+                    "the assessment is silently back in review, and the API reports "
+                    "HTTP 200 with no indication that a decision record was lost."
+                )
     else:
         notes.append("The audit trail was fully intact after the restore.")
 
@@ -785,6 +840,16 @@ def _alembic(url: str, *args: str) -> None:
     if result.returncode != 0:
         sys.stderr.write(result.stdout + result.stderr)
         raise RuntimeError(f"alembic {' '.join(args)} failed")
+
+
+def _headers_present(headers: dict[str, str], required: tuple[str, ...]) -> bool:
+    """True when every required header is present.
+
+    HTTP header names are case-insensitive and ``http.client`` lower-cases them, so a
+    case-sensitive comparison reports headers that are demonstrably present as missing.
+    """
+    present = {str(name).lower() for name in headers}
+    return all(name.lower() in present for name in required)
 
 
 def http_call(
@@ -1796,6 +1861,25 @@ def scenario_audit_history_survival(ctx: DrillContext) -> ScenarioResult:
     api_read = http_call(
         f"{ctx.api.base}/api/v1/assessments/{assessment_id}/audit", headers=ctx.headers
     )
+    # The application is expected to NOTICE that the trail was rewound. The audit
+    # history response carries an X-Audit-Rollback-Detected header and there is a
+    # dedicated integrity endpoint; a reader must not be able to mistake a rewound
+    # trail for one that never had those events.
+    integrity = http_call(
+        f"{ctx.api.base}/api/v1/assessments/{assessment_id}/audit/integrity",
+        headers=ctx.headers,
+    )
+    integrity_body = _json_body(integrity)
+    obs["integrity_endpoint_status"] = integrity["status"]
+    obs["integrity_rollback_detected"] = bool(integrity_body.get("rollback_detected"))
+    obs["integrity_marked_sequence"] = integrity_body.get("marked_sequence")
+    obs["integrity_actual_sequence"] = integrity_body.get("actual_sequence")
+    obs["rollback_reported_in_header"] = (
+        str(api_read["headers"].get("x-audit-rollback-detected", "")).lower() == "true"
+    )
+    obs["rollback_detected_by_application"] = bool(
+        obs["integrity_rollback_detected"] or obs["rollback_reported_in_header"]
+    )
     obs["api_status_after_restore"] = api_read["status"]
     served = _json_items(api_read)
     obs["api_served_events"] = len(served)
@@ -1873,9 +1957,9 @@ def scenario_dependency_failure(ctx: DrillContext) -> ScenarioResult:
             "served_stale_data": bool(served_items),
             "served_items": len(served_items),
             "credentials_in_log": log_contains_secret(log_text, PASSWORD),
-            "security_headers_present": all(
-                key in response["headers"]
-                for key in ("X-Request-ID", "Cache-Control", "X-Content-Type-Options")
+            "security_headers_present": _headers_present(
+                response["headers"],
+                ("X-Request-ID", "Cache-Control", "X-Content-Type-Options"),
             ),
         }
         return case
@@ -2046,9 +2130,9 @@ def scenario_disk_full(ctx: DrillContext) -> ScenarioResult:
         obs["stack_trace_in_body"] = "Traceback" in write["body"]
         obs["write_succeeded_despite_full_storage"] = write["status"] in (200, 201)
         obs["write_response_headers"] = sorted(write["headers"])
-        obs["security_headers_present"] = all(
-            key in write["headers"]
-            for key in ("X-Request-ID", "Cache-Control", "X-Content-Type-Options")
+        obs["security_headers_present"] = _headers_present(
+            write["headers"],
+            ("X-Request-ID", "Cache-Control", "X-Content-Type-Options"),
         )
 
         log_text = full_api.log_text()
