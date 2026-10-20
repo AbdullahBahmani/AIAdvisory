@@ -27,3 +27,6 @@ htmlcov/
 
 # Generated local demo exports
 demo_out/
+
+# Local evidence attachment store (never commit uploaded customer data)
+.advisory/

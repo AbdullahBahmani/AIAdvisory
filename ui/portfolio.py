@@ -16,6 +16,114 @@ def _request(st, base: str, method: str, path: str, body=None):
         return None
 
 
+def _raw_request(
+    base: str,
+    method: str,
+    path: str,
+    *,
+    data: bytes | None = None,
+    extra_headers: dict[str, str] | None = None,
+    timeout: float = 30.0,
+) -> bytes:
+    """Binary API call. The UI never reads the attachment store directly."""
+    from urllib.request import Request, urlopen
+
+    from ui.streamlit_app import _API_BEARER, _API_ORGANIZATION, _ASSESSMENT_REVISION
+
+    headers = {"Accept": "*/*"}
+    bearer = _API_BEARER.get()
+    if bearer:
+        headers["Authorization"] = "Bearer " + bearer
+    tenant = _API_ORGANIZATION.get()
+    if tenant:
+        headers["X-Organization-ID"] = tenant
+    revision = _ASSESSMENT_REVISION.get()
+    if revision is not None and method in {"POST", "PUT", "PATCH", "DELETE"}:
+        headers["If-Match"] = f'"{revision}"'
+    headers.update(extra_headers or {})
+    request = Request(f"{base.rstrip('/')}{path}", data=data, headers=headers, method=method)
+    with urlopen(request, timeout=timeout) as response:  # noqa: S310 - configured local API
+        return response.read()
+
+
+MEDIA_TYPES_BY_SUFFIX = {
+    ".pdf": "application/pdf",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".json": "application/json",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".svg": "image/svg+xml",
+}
+
+
+def _upload_attachment(st, base: str, assessment_id: str, uploaded) -> bool:
+    """Upload one file through the API; the API owns storage and validation."""
+    from urllib.parse import quote
+
+    from ui.streamlit_app import _api_error
+
+    media_type = getattr(uploaded, "type", None) or ""
+    if not media_type or media_type == "application/octet-stream":
+        suffix = "." + uploaded.name.rsplit(".", 1)[-1].lower() if "." in uploaded.name else ""
+        media_type = MEDIA_TYPES_BY_SUFFIX.get(suffix, "application/octet-stream")
+    try:
+        payload = uploaded.getvalue() if hasattr(uploaded, "getvalue") else uploaded.read()
+    except (OSError, ValueError) as exc:
+        st.error(_api_error(exc))
+        return False
+    headers = {
+        "Content-Type": media_type,
+        "X-Attachment-Filename": quote(uploaded.name, safe=""),
+        "X-Attachment-Content-Type": media_type,
+    }
+    try:
+        _raw_request(
+            base,
+            "POST",
+            f"/api/v1/assessments/{assessment_id}/evidence-attachments",
+            data=payload,
+            extra_headers=headers,
+        )
+    except (HTTPError, URLError, OSError, ValueError) as exc:
+        st.error(_api_error(exc))
+        return False
+    return True
+
+
+def _download_attachment(st, base: str, assessment_id: str, attachment_id: str) -> bytes | None:
+    from ui.streamlit_app import _api_error
+
+    try:
+        return _raw_request(
+            base,
+            "GET",
+            f"/api/v1/assessments/{assessment_id}/evidence-attachments/{attachment_id}/download",
+        )
+    except (HTTPError, URLError, OSError, ValueError) as exc:
+        st.error(_api_error(exc))
+        return None
+
+
+def _delete_attachment(st, base: str, assessment_id: str, attachment_id: str) -> bool:
+    from ui.streamlit_app import _api_error
+
+    try:
+        _raw_request(
+            base,
+            "DELETE",
+            f"/api/v1/assessments/{assessment_id}/evidence-attachments/{attachment_id}",
+        )
+    except (HTTPError, URLError, OSError, ValueError) as exc:
+        st.error(_api_error(exc))
+        return False
+    return True
+
+
 def _decimal(text: str, label: str) -> str:
     try:
         value = Decimal(text.strip())
@@ -152,6 +260,54 @@ def render_assessment_portfolio(st, base: str, assessment: dict) -> None:
                     },
                 ):
                     st.rerun()
+
+    st.markdown("#### Evidence attachments")
+    st.caption(
+        "Files are stored outside the application, never served inline, and are "
+        "readable only inside the owning organization. Allowed: PDF, TXT, MD, "
+        "CSV, JSON, PNG, JPEG, HTML and SVG."
+    )
+    listing = _request(st, base, "GET", root + "/evidence-attachments")
+    if listing:
+        by_id = {item["id"]: item for item in listing}
+        chosen = st.selectbox(
+            "Attachment",
+            options=list(by_id),
+            format_func=lambda key: by_id[key]["display_name"],
+            key=f"attachment_pick_{aid}",
+        )
+        item = by_id[chosen]
+        st.caption(
+            f"{item['content_type']} · {item['size_bytes']} bytes · bound to revision "
+            f"{item['assessment_revision']} · uploaded by {item['uploaded_by']}"
+            + (" · STALE" if item["stale"] else "")
+        )
+        st.caption(f"SHA-256 {item['sha256']}")
+        if st.button("Fetch attachment", key=f"attachment_fetch_{aid}"):
+            payload = _download_attachment(st, base, aid, chosen)
+            if payload is not None:
+                st.session_state[f"attachment_bytes_{aid}"] = payload
+        payload = st.session_state.get(f"attachment_bytes_{aid}")
+        if payload is not None:
+            st.download_button(
+                "Save attachment",
+                data=payload,
+                file_name=item.get("download_name") or item["display_name"],
+                key=f"attachment_save_{aid}",
+            )
+        if st.button("Delete attachment", key=f"attachment_delete_{aid}"):
+            if _delete_attachment(st, base, aid, chosen):
+                st.session_state.pop(f"attachment_bytes_{aid}", None)
+                st.rerun()
+    with st.expander("Attach a file"):
+        uploaded = st.file_uploader(
+            "Evidence file",
+            type=["pdf", "txt", "md", "csv", "json", "png", "jpg", "jpeg", "html", "svg"],
+            key=f"attachment_upload_{aid}",
+        )
+        if uploaded is not None and st.button("Upload attachment", key=f"attachment_send_{aid}"):
+            if _upload_attachment(st, base, aid, uploaded):
+                st.rerun()
 
     st.markdown("#### ROI scenario simulator")
     st.caption(
