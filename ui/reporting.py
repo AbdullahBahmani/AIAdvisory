@@ -3,6 +3,8 @@
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from ui.accessibility import heading
+
 
 def fetch_report(
     base_url: str,
@@ -30,8 +32,8 @@ def fetch_report(
     return data
 
 
-def render_report_tab(st, base_url: str, assessment: dict) -> None:
-    st.subheader("Assessment report and export")
+def render_report_tab(st, base_url: str, assessment: dict, level: int = 3) -> None:
+    heading(st, "Assessment report and export", level)
     st.caption(
         "Evidence-labeled snapshot of the current deterministic analysis and optional "
         "unverified AI suggestions. No rollout authorization."
@@ -62,4 +64,8 @@ def render_report_tab(st, base_url: str, assessment: dict) -> None:
         mime="text/html",
     )
     with st.expander("Preview report (Markdown)"):
+        st.caption(
+            "Markdown source of the current report. The preview is scrollable with the "
+            "keyboard: focus the code block and use the arrow keys."
+        )
         st.code(markdown.decode("utf-8"), language="markdown")

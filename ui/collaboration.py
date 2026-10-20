@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from urllib.error import HTTPError, URLError
 
+from ui.accessibility import heading
+
 
 def _call(st, base_url, method, path, payload=None):
     from ui.streamlit_app import _api_error, api_request
@@ -15,9 +17,9 @@ def _call(st, base_url, method, path, payload=None):
         return None
 
 
-def render_collaboration(st, base_url: str, assessment: dict) -> None:
+def render_collaboration(st, base_url: str, assessment: dict, level: int = 3) -> None:
     aid = assessment["id"]
-    st.subheader("Team collaboration")
+    heading(st, "Team collaboration", level)
     st.caption(
         "Comments and approvals are attributed by the API. "
         "Old revisions remain historical evidence."
@@ -51,7 +53,7 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
                 if result:
                     st.rerun()
 
-    st.markdown("#### Discussion")
+    heading(st, "Discussion", level + 1)
     comments = _call(st, base_url, "GET", f"/api/v1/assessments/{aid}/comments")
     if comments is not None:
         if not comments:
@@ -72,7 +74,7 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
             ):
                 st.rerun()
 
-    st.markdown("#### Staged review")
+    heading(st, "Staged review", level + 1)
     current = _call(st, base_url, "GET", f"/api/v1/assessments/{aid}/approvals")
     if current:
         st.caption(
@@ -115,8 +117,8 @@ def render_collaboration(st, base_url: str, assessment: dict) -> None:
     )
 
 
-def render_workspace(st, base_url: str) -> None:
-    st.subheader("Organization workspace")
+def render_workspace(st, base_url: str, level: int = 2) -> None:
+    heading(st, "Organization workspace", level)
     summary = _call(st, base_url, "GET", "/api/v1/workspace/summary")
     if summary:
         a, b, c, d = st.columns(4)
@@ -124,7 +126,8 @@ def render_workspace(st, base_url: str) -> None:
         b.metric("In review", summary["pending_review"])
         c.metric("Assigned to me", summary["assigned_to_me"])
         d.metric("Unread notices", summary["unread_notifications"])
-        st.markdown("#### Portfolio by status")
+        heading(st, "Portfolio by status", level + 1)
+        st.caption("Table: number of assessments in the organization by status.")
         st.dataframe(
             [
                 {"Status": name.replace("_", " ").title(), "Count": n}
@@ -136,7 +139,7 @@ def render_workspace(st, base_url: str) -> None:
     inbox = _call(st, base_url, "GET", "/api/v1/workspace/inbox")
     if not inbox:
         return
-    st.markdown("#### My assigned assessments")
+    heading(st, "My assigned assessments", level + 1)
     for assignment in inbox["assigned_assessments"]:
         st.write(
             f"**{assignment['title']}** — {assignment['status']} "
@@ -144,7 +147,7 @@ def render_workspace(st, base_url: str) -> None:
         )
     if not inbox["assigned_assessments"]:
         st.caption("No assigned assessments.")
-    st.markdown("#### Notifications")
+    heading(st, "Notifications", level + 1)
     for notice in inbox["notifications"]:
         if notice["read_at"]:
             continue
