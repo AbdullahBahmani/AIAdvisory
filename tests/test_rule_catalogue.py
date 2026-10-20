@@ -22,6 +22,35 @@ RULE_ENGINE = REPO_ROOT / "app" / "services" / "rule_engine.py"
 
 # Rule identifiers are three to five uppercase letters, a dash and three digits.
 RULE_ID = r"[A-Z]{3,5}-\d{3}"
+# A rule id only appears as a quoted string literal in the source. Matching prose would
+# produce false positives - "SHA-256 digest" is not a rule.
+RULE_ID_LITERAL = rf'["\']({RULE_ID})["\']'
+# Standard abbreviations that look like rule ids but never are.
+NOT_A_RULE = frozenset(
+    {
+        "ASCII",
+        "CPU",
+        "DNS",
+        "GPU",
+        "HTML",
+        "HTTP",
+        "IANA",
+        "ISO",
+        "JSON",
+        "MIME",
+        "OS",
+        "PEM",
+        "RAM",
+        "RFC",
+        "SHA",
+        "SSL",
+        "TCP",
+        "TLS",
+        "UDP",
+        "UTF",
+        "UUID",
+    }
+)
 
 
 def _catalogue_section() -> str:
@@ -74,9 +103,11 @@ def test_documented_severities_match_the_engine():
 def test_the_catalogue_covers_every_rule_id_in_the_repository():
     """No rule identifier may exist anywhere in the app without being in the catalogue."""
     catalogue = set(_documented_rules())
-    pattern = re.compile(rf"\b{RULE_ID}\b")
+    pattern = re.compile(RULE_ID_LITERAL)
     for path in (REPO_ROOT / "app").rglob("*.py"):
         for found in pattern.findall(path.read_text(encoding="utf-8")):
+            if found.split("-")[0] in NOT_A_RULE:
+                continue
             assert found in catalogue, (
                 f"{found} is referenced in {path.relative_to(REPO_ROOT)} but is not in the "
                 "planner's implemented rule catalogue"

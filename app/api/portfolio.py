@@ -35,6 +35,10 @@ from app.domain.portfolio import (
     PocPlanView,
     PortfolioProfileIn,
     PortfolioProfileView,
+    ScenarioComparisonView,
+    SensitivityEnvelopeView,
+    SensitivityRangeIn,
+    SensitivityThresholdIn,
     ValueScenarioIn,
     ValueScenarioView,
 )
@@ -43,6 +47,14 @@ from app.services import attachments
 from app.services.approval_chain import require_completed_approvals
 from app.services.audit import audit
 from app.services.portfolio import priority_result, value_projection
+from app.services.sensitivity import (
+    ASSUMPTIONS,
+    IncomparableScenariosError,
+    ScenarioForComparison,
+    compare_scenarios,
+    sensitivity_envelope,
+    sensitivity_scenario_from,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio-intelligence"])
 
@@ -581,6 +593,166 @@ def add_scenario(assessment_id: str, payload: ValueScenarioIn, db: Session = Dep
     audit(db, row, "portfolio.scenario_created", scenario_id=item.id, revision=row.revision)
     db.commit()
     return _scenario_view(item, row.revision)
+
+
+def _scenario_row(db: Session, row: AssessmentRow, scenario_id: str) -> ValueScenarioRow:
+    """Fetch a scenario of this assessment; other tenants get the same 404."""
+    scenario = db.scalar(
+        select(ValueScenarioRow).where(
+            ValueScenarioRow.id == scenario_id,
+            ValueScenarioRow.assessment_id == row.id,
+        )
+    )
+    if scenario is None:
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    return scenario
+
+
+def _sensitivity_ranges(
+    lows: dict[str, Decimal | None], highs: dict[str, Decimal | None]
+) -> dict[str, SensitivityRangeIn]:
+    """Pair the optional per-assumption range query parameters."""
+    ranges: dict[str, SensitivityRangeIn] = {}
+    for assumption in ASSUMPTIONS:
+        low, high = lows[assumption], highs[assumption]
+        if low is None and high is None:
+            continue
+        if low is None or high is None:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Provide both {assumption}_low and {assumption}_high, or neither",
+            )
+        if high < low:
+            raise HTTPException(
+                status_code=422,
+                detail=f"{assumption}_high must not be below {assumption}_low",
+            )
+        ranges[assumption] = SensitivityRangeIn(low=low, high=high)
+    return ranges
+
+
+def _threshold_spec(
+    row: AssessmentRow, values: ValueScenarioIn, supplied: Decimal | None
+) -> SensitivityThresholdIn | None:
+    """The minimum net value threshold to apply, with its stated basis.
+
+    The assessment stores the threshold as a bare per-period amount with no
+    currency and no period, so the basis is always stated explicitly. A threshold
+    whose period cannot be established is reported as unavailable rather than
+    compared against a period the analyst never chose.
+    """
+    if supplied is not None:
+        return SensitivityThresholdIn(
+            minimum_net_value=supplied,
+            basis="caller_supplied_query_parameter",
+            period=values.period,
+            currency_basis=(
+                f"applied in the scenario currency {values.currency}; the caller supplied "
+                "no currency"
+            ),
+        )
+    raw = row.minimum_net_value_per_period
+    if raw is None:
+        return None
+    try:
+        amount = Decimal(str(raw))
+    except ArithmeticError:
+        return None
+    period = None
+    inputs = row.value_inputs or {}
+    if inputs.get("period") in {"month", "quarter", "year"}:
+        period = inputs["period"]
+    return SensitivityThresholdIn(
+        minimum_net_value=amount,
+        basis="assessment_minimum_net_value_per_period",
+        period=period,
+        currency_basis=(
+            "the assessment threshold records no currency; it is applied in the "
+            f"scenario currency {values.currency}"
+        ),
+    )
+
+
+@router.get(
+    "/assessments/{assessment_id}/value-scenarios/{scenario_id}/sensitivity",
+    response_model=SensitivityEnvelopeView,
+)
+def scenario_sensitivity(
+    assessment_id: str,
+    scenario_id: str,
+    db: Session = Depends(get_db),
+    cases_per_period_low: Decimal | None = Query(default=None, ge=0),
+    cases_per_period_high: Decimal | None = Query(default=None, ge=0),
+    baseline_minutes_low: Decimal | None = Query(default=None, ge=0),
+    baseline_minutes_high: Decimal | None = Query(default=None, ge=0),
+    target_minutes_low: Decimal | None = Query(default=None, ge=0),
+    target_minutes_high: Decimal | None = Query(default=None, ge=0),
+    hourly_cost_low: Decimal | None = Query(default=None, ge=0),
+    hourly_cost_high: Decimal | None = Query(default=None, ge=0),
+    minimum_net_value: Decimal | None = Query(default=None, ge=0),
+):
+    """Read-only sensitivity envelope for one scenario. Advisory, never a decision."""
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    scenario = _scenario_row(db, row, scenario_id)
+    values = ValueScenarioIn.model_validate(scenario.inputs)
+    ranges = _sensitivity_ranges(
+        {
+            "cases_per_period": cases_per_period_low,
+            "baseline_minutes": baseline_minutes_low,
+            "target_minutes": target_minutes_low,
+            "hourly_cost": hourly_cost_low,
+        },
+        {
+            "cases_per_period": cases_per_period_high,
+            "baseline_minutes": baseline_minutes_high,
+            "target_minutes": target_minutes_high,
+            "hourly_cost": hourly_cost_high,
+        },
+    )
+    return sensitivity_envelope(
+        sensitivity_scenario_from(values),
+        ranges=ranges,
+        threshold=_threshold_spec(row, values, minimum_net_value),
+        scenario_id=scenario.id,
+        assessment_id=row.id,
+        assessment_revision=row.revision,
+        stale=scenario.assessment_revision != row.revision,
+    )
+
+
+@router.get(
+    "/assessments/{assessment_id}/value-scenarios/comparison",
+    response_model=ScenarioComparisonView,
+)
+def compare_value_scenarios(
+    assessment_id: str,
+    scenario_ids: list[str] = Query(min_length=1, max_length=25),
+    db: Session = Depends(get_db),
+):
+    """Compare scenarios of one assessment. Mixed currency or period is refused."""
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    wanted = list(dict.fromkeys(scenario_ids))
+    scenarios = db.scalars(
+        select(ValueScenarioRow).where(
+            ValueScenarioRow.assessment_id == row.id,
+            ValueScenarioRow.id.in_(wanted),
+        )
+    ).all()
+    found = {scenario.id: scenario for scenario in scenarios}
+    if any(scenario_id not in found for scenario_id in wanted):
+        raise HTTPException(status_code=404, detail="Scenario not found")
+    items = [
+        ScenarioForComparison(
+            scenario_id=scenario_id,
+            scenario=ValueScenarioIn.model_validate(found[scenario_id].inputs),
+            stale=found[scenario_id].assessment_revision != row.revision,
+        )
+        for scenario_id in wanted
+    ]
+    try:
+        return compare_scenarios(items)
+    except IncomparableScenariosError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from None
 
 
 @router.get("/assessments/{assessment_id}/pocs", response_model=list[PocPlanView])
