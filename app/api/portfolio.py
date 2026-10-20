@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.assessments import audit, check_mutable, get_or_404
+from app.api.assessments import check_mutable, get_or_404
 from app.concurrency import assert_current_revision
 from app.db.models import (
     AssessmentRow,
@@ -38,6 +38,7 @@ from app.domain.portfolio import (
 )
 from app.security import current_principal, require_role
 from app.services.approval_chain import require_completed_approvals
+from app.services.audit import audit
 from app.services.portfolio import priority_result, value_projection
 
 router = APIRouter(prefix="/api/v1", tags=["portfolio-intelligence"])

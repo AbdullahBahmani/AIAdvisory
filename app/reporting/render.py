@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from html import escape as html_escape
 
 from app.domain.persistence import AssessmentDetail
+from app.domain.portfolio import ProvenanceView
 
 REPORT_VERSION = "4.0"
 
@@ -53,7 +54,62 @@ def _table(headers: list[str], rows: list[list[object]]) -> Block:
     return Block("table", (headers, [[_line(cell) for cell in row] for row in rows]))
 
 
-def build_sections(detail: AssessmentDetail, proposals: list[dict] | None = None) -> list[Section]:
+def _provenance_blocks(provenance: ProvenanceView) -> list[Block]:
+    """Render the decision ledger in the report's own fact/label style."""
+    prompt_versions = sorted({item.prompt_version for item in provenance.ai_proposals})
+    schema_versions = sorted({item.schema_version for item in provenance.ai_proposals})
+    blocks: list[Block] = [
+        _text(
+            "Inputs recorded when this decision was finalized. The ledger states what the "
+            "system presented to the reviewer at that moment; it is not proof that the "
+            "decision was correct, and it is neither an approval nor a validation."
+        ),
+        _table(
+            ["Recorded input", "Value"],
+            [
+                ["Policy version", provenance.policy_version],
+                ["Scoring weight version", provenance.scoring_weight_version],
+                ["Analysis revision", provenance.analysis_revision],
+                ["Assessment revision", provenance.assessment_revision],
+                ["Analysis digest", provenance.analysis_digest],
+                ["Contributing evidence records", provenance.evidence_ids],
+                ["Verified evidence records", provenance.verified_evidence_ids],
+                ["Contributing value scenario", provenance.value_scenario_id],
+                ["Recorded value scenarios", provenance.value_scenario_ids],
+                ["Reviewer subject", provenance.reviewer_subject],
+                [
+                    "Reviewer identity verified",
+                    "yes" if provenance.reviewer_identity_verified else "no",
+                ],
+                ["Decision maker subject", provenance.decision_maker_subject],
+                [
+                    "Decision maker identity verified",
+                    "yes" if provenance.decision_maker_identity_verified else "no",
+                ],
+                ["AI proposal recorded", "yes" if provenance.ai_contributed else "no"],
+                ["AI prompt versions", prompt_versions],
+                ["AI schema versions", schema_versions],
+                ["Recorded at", provenance.recorded_at],
+                ["Basis stale", "yes" if provenance.stale else "no"],
+            ],
+        ),
+    ]
+    if provenance.stale:
+        blocks.append(
+            _text(
+                "Stale basis: the recorded inputs changed after this decision was finalized "
+                f"({', '.join(provenance.stale_reasons)}). The decision was taken against an "
+                "earlier basis and must not be presented as current."
+            )
+        )
+    return blocks
+
+
+def build_sections(
+    detail: AssessmentDetail,
+    proposals: list[dict] | None = None,
+    provenance: ProvenanceView | None = None,
+) -> list[Section]:
     """Construct one view model for both safe output formats."""
     if detail.analysis is None or detail.analysis_revision != detail.revision:
         raise ValueError("Current deterministic analysis is required to export a report")
@@ -66,6 +122,22 @@ def build_sections(detail: AssessmentDetail, proposals: list[dict] | None = None
     summaries = [a.recommendation.category.value for a in analysis.tasks]
     counts = {category: summaries.count(category) for category in sorted(set(summaries))}
     summary_rows = [[key.replace("_", " "), count] for key, count in counts.items()]
+    summary_fields = [
+        ["Organization", detail.organization],
+        ["Business problem", detail.business_problem],
+        ["Owner", detail.owner],
+        ["Status", detail.status],
+        ["Assessment revision", detail.revision],
+        ["Analysis revision", detail.analysis_revision],
+        ["Policy version", analysis.policy_version],
+        ["Report version", REPORT_VERSION],
+        ["Local demo only", detail.local_demo_only],
+    ]
+    if provenance is not None:
+        summary_fields += [
+            ["Decision inputs recorded", "yes"],
+            ["Decision basis stale", "yes" if provenance.stale else "no"],
+        ]
 
     sections = [
         Section(
@@ -78,17 +150,7 @@ def build_sections(detail: AssessmentDetail, proposals: list[dict] | None = None
                 ),
                 _table(
                     ["Field", "Value"],
-                    [
-                        ["Organization", detail.organization],
-                        ["Business problem", detail.business_problem],
-                        ["Owner", detail.owner],
-                        ["Status", detail.status],
-                        ["Assessment revision", detail.revision],
-                        ["Analysis revision", detail.analysis_revision],
-                        ["Policy version", analysis.policy_version],
-                        ["Report version", REPORT_VERSION],
-                        ["Local demo only", detail.local_demo_only],
-                    ],
+                    summary_fields,
                 ),
                 _table(["Recommendation category", "Task count"], summary_rows),
             ],
@@ -353,6 +415,10 @@ def build_sections(detail: AssessmentDetail, proposals: list[dict] | None = None
                 f"{latest_final.selected_category.value}. Human identity remains unverified."
             )
         )
+    if provenance is not None:
+        review_blocks.extend(_provenance_blocks(provenance))
+    else:
+        review_blocks.append(_text("No decision input ledger is recorded for this assessment."))
     sections.append(Section("FDE review and final decision", review_blocks))
     sections.append(
         Section(
@@ -380,14 +446,18 @@ def _md(value: object) -> str:
     return re.sub(r"([\\`*_{}\[\]()#+.!|>~-])", r"\\\1", _line(value))
 
 
-def render_markdown(detail: AssessmentDetail, proposals: list[dict] | None = None) -> str:
+def render_markdown(
+    detail: AssessmentDetail,
+    proposals: list[dict] | None = None,
+    provenance: ProvenanceView | None = None,
+) -> str:
     lines = [
         "# " + _md(detail.title),
         "",
         "*AI Opportunity Advisor — local demo assessment report*",
         "",
     ]
-    for section in build_sections(detail, proposals):
+    for section in build_sections(detail, proposals, provenance):
         lines += ["## " + _md(section.title), ""]
         for block in section.blocks:
             if block.kind == "text":
@@ -407,7 +477,11 @@ def render_markdown(detail: AssessmentDetail, proposals: list[dict] | None = Non
     return "\n".join(lines).rstrip() + "\n"
 
 
-def render_html(detail: AssessmentDetail, proposals: list[dict] | None = None) -> str:
+def render_html(
+    detail: AssessmentDetail,
+    proposals: list[dict] | None = None,
+    provenance: ProvenanceView | None = None,
+) -> str:
     parts = [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
         '<meta name="viewport" content="width=device-width,initial-scale=1">',
@@ -425,7 +499,7 @@ def render_html(detail: AssessmentDetail, proposals: list[dict] | None = None) -
         '<p class="notice">AI Opportunity Advisor · advisory only · local demo '
         "· not rollout authorization</p>",
     ]
-    for section in build_sections(detail, proposals):
+    for section in build_sections(detail, proposals, provenance):
         parts.append("<section><h2>" + html_escape(section.title) + "</h2>")
         for block in section.blocks:
             if block.kind == "text":

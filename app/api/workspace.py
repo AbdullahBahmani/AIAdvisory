@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.api.assessments import audit, get_or_404
+from app.api.assessments import get_or_404
 from app.concurrency import assert_current_revision
 from app.db.models import (
     ApiCredentialRow,
@@ -40,6 +40,7 @@ from app.domain.collaboration import (
 )
 from app.security import ROLE_LEVEL, current_principal, require_role
 from app.services.approval_chain import STAGES, current_chain
+from app.services.audit import audit
 
 router = APIRouter(prefix="/api/v1", tags=["workspace"])
 

@@ -9,11 +9,12 @@ from sqlalchemy.orm import Session
 from app.ai.provider import AIProvider, get_ai_provider
 from app.ai.schemas import AcceptTaskSuggestions, AIRequest, AIRunRecord, Feature
 from app.ai.service import list_proposals, run_proposal
-from app.api.assessments import audit, change_inputs, check_mutable, get_or_404, task_out
+from app.api.assessments import change_inputs, check_mutable, get_or_404, task_out
 from app.db.models import AIRunRow, AssessmentRow, StepRow, TaskRow
 from app.db.session import get_db
 from app.domain.persistence import StoredTask
 from app.security import current_principal, require_reviewer_or_local_demo
+from app.services.audit import audit
 
 router = APIRouter(prefix="/api/v1/assessments", tags=["ai-advisory"])
 
