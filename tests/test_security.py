@@ -1,32 +1,24 @@
-"""Negative tenant/auth controls with an isolated real SQLite database."""
+"""Negative tenant/auth controls with an isolated real database."""
 
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import ApiCredentialRow, AssessmentRow, Base, OrganizationRow
+from app.db.models import ApiCredentialRow, AssessmentRow, OrganizationRow
 from app.db.session import get_db
 from app.main import app
 from app.security import digest_token, make_token
 
 
 @pytest.fixture
-def secure_client(monkeypatch, tmp_path: Path):
+def secure_client(monkeypatch, db_engine):
+    """A test client bound to an isolated database on the selected backend."""
     monkeypatch.delenv("ADVISORY_DEMO_MODE", raising=False)
     monkeypatch.delenv("ADVISORY_REVIEW_TOKEN", raising=False)
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'isolation.sqlite3'}", connect_args={"check_same_thread": False}
-    )
-
-    @event.listens_for(engine, "connect")
-    def enable_fk(conn, _):
-        conn.execute("PRAGMA foreign_keys=ON")
-
-    Base.metadata.create_all(engine)
+    engine = db_engine
 
     def override_db():
         with Session(engine) as db:
@@ -57,7 +49,6 @@ def secure_client(monkeypatch, tmp_path: Path):
 
         yield client, provision, engine
     app.dependency_overrides.clear()
-    engine.dispose()
 
 
 def test_fail_closed_all_routes(secure_client):

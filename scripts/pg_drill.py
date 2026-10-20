@@ -7,6 +7,7 @@ container so an operator can reproduce it:
     python -m scripts.pg_drill migrate        # alembic upgrade head + alembic check
     python -m scripts.pg_drill fresh          # fresh database + downgrade base
     python -m scripts.pg_drill backup-restore # pg_dump -> second container -> verify
+    python -m scripts.pg_drill suite-schema   # prepare the schema the test suite uses
     python -m scripts.pg_drill down           # remove the disposable instances
 
     python -m scripts.pg_drill all             # up + migrate + fresh + backup-restore + down
@@ -28,6 +29,17 @@ Configuration (all optional, all local-only):
     PG_DRILL_DATABASE     default aiadvisory
     PG_DRILL_PASSWORD     default local_drill_only_pw (throwaway, local container only)
     PG_DRILL_KEEP         set to 1 to keep the containers and the dump file
+    PG_DRILL_SUITE_SCHEMA default aiadvisory_pg_suite
+
+The same disposable instance runs the whole test suite against PostgreSQL:
+
+    ADVISORY_PG_DRILL_URL=postgresql+psycopg://aiadvisory:***@127.0.0.1:15432/aiadvisory \\
+        python -m pytest -q
+
+Give every concurrent worktree its own container and port (for example
+``PG_DRILL_CONTAINER=aiadvisory-pg-drill-w3a PG_DRILL_PORT=15442``): two drill
+runs on the same instance drop and recreate the same database and will break
+each other.
 """
 
 from __future__ import annotations
@@ -40,6 +52,7 @@ import sys
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -52,6 +65,11 @@ USER = os.getenv("PG_DRILL_USER", "aiadvisory")
 DATABASE = os.getenv("PG_DRILL_DATABASE", "aiadvisory")
 PASSWORD = os.getenv("PG_DRILL_PASSWORD", "local_drill_only_pw")
 KEEP = os.getenv("PG_DRILL_KEEP") == "1"
+
+# Schema used by the backend-parametrised test suite. It is created, migrated
+# and dropped again by the suite itself; `pg_drill.py suite-schema` prepares it
+# manually for operators who want to inspect it.
+SUITE_SCHEMA = os.getenv("PG_DRILL_SUITE_SCHEMA", "aiadvisory_pg_suite")
 
 KEY_TABLES = (
     "assessments",
@@ -87,6 +105,79 @@ def database_url(port: int = PORT, database: str = DATABASE) -> str:
 
 def redacted_url(port: int = PORT, database: str = DATABASE) -> str:
     return f"postgresql+psycopg://{USER}:***@127.0.0.1:{port}/{database}"
+
+
+# --------------------------------------------------------------------------
+# Reusable PostgreSQL plumbing (shared with the backend-parametrised test suite)
+# --------------------------------------------------------------------------
+
+
+def schema_url(url: str, schema: str) -> str:
+    """Return ``url`` with the PostgreSQL ``search_path`` pinned to ``schema``.
+
+    Every object the connection creates then lands in ``schema`` instead of
+    ``public``, which keeps the disposable instance and the application schema
+    isolated from each other.
+    """
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query))
+    query["options"] = f"-csearch_path={schema}"
+    return urlunsplit(parts._replace(query=urlencode(query)))
+
+
+def run_alembic(url: str, *args: str) -> str:
+    """Run ``alembic <args>`` against ``url`` and return the combined output.
+
+    The migration chain reads ``DATABASE_URL`` from the environment (see
+    ``migrations/env.py``), so the URL travels through the subprocess
+    environment instead of the command line.
+    """
+    env = dict(os.environ)
+    env["DATABASE_URL"] = url
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", *args],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"alembic {' '.join(args)} failed with exit code {result.returncode}\n"
+            f"{result.stdout}\n{result.stderr}"
+        )
+    return result.stdout + result.stderr
+
+
+def create_schema(base_url: str, schema: str) -> None:
+    """(Re)create an empty schema in the target database."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(base_url, pool_pre_ping=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    finally:
+        engine.dispose()
+
+
+def drop_schema(base_url: str, schema: str) -> None:
+    """Remove a schema and everything in it."""
+    from sqlalchemy import create_engine, text
+
+    engine = create_engine(base_url, pool_pre_ping=True)
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+    finally:
+        engine.dispose()
+
+
+def migrate_schema(base_url: str, schema: str) -> str:
+    """Create ``schema`` and apply the whole Alembic chain to it."""
+    create_schema(base_url, schema)
+    return run_alembic(schema_url(base_url, schema), "upgrade", "head")
 
 
 def _wait_ready(container: str, timeout: int = 90) -> None:
@@ -500,7 +591,7 @@ def backup_restore() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Disposable local PostgreSQL drill (P5-03)")
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("up", "down", "migrate", "fresh", "backup-restore", "all"):
+    for name in ("up", "down", "migrate", "fresh", "backup-restore", "suite-schema", "all"):
         sub.add_parser(name)
     args = parser.parse_args()
     if args.command == "up":
@@ -513,6 +604,10 @@ def main() -> None:
         fresh()
     elif args.command == "backup-restore":
         backup_restore()
+    elif args.command == "suite-schema":
+        migrate_schema(database_url(), SUITE_SCHEMA)
+        print(f"schema {SUITE_SCHEMA} is migrated; run the suite with:")
+        print(f"  ADVISORY_PG_DRILL_URL={redacted_url()} python -m pytest -q")
     elif args.command == "all":
         up()
         try:

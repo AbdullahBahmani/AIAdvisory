@@ -34,6 +34,8 @@ from sqlalchemy import create_engine, event, inspect, select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
+from tests.backend import STATEMENTS
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DRILL_SCHEMA = "aiadvisory_pg_drill"
 DOWNGRADE_SCHEMA = "aiadvisory_pg_drill_downgrade"
@@ -100,6 +102,7 @@ def _run_alembic(url: str, action: str, revision: str) -> None:
 @pytest.fixture(scope="session")
 def pg_base_engine():
     engine = create_engine(PG_URL, pool_pre_ping=True)
+    STATEMENTS.register(engine)
     try:
         yield engine
     finally:
@@ -115,6 +118,7 @@ def pg_drill(pg_base_engine):
     url = _search_path_url(PG_URL, DRILL_SCHEMA)
     _run_alembic(url, "upgrade", "head")
     engine = create_engine(url, pool_pre_ping=True)
+    STATEMENTS.register(engine)
     try:
         yield SimpleNamespace(url=url, engine=engine, schema=DRILL_SCHEMA)
     finally:

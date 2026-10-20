@@ -2,24 +2,20 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.exc import StaleDataError
 
 from app.ai.data_guard import assert_no_obvious_sensitive_data
 from app.concurrency import assert_current_revision
-from app.db.models import AssessmentRow, Base
+from app.db.models import AssessmentRow
 from app.deployment import check_deployment_configuration
 from app.security import Principal
 
 
-def test_stale_concurrent_edition_is_rejected(tmp_path: Path):
-    engine = create_engine(f"sqlite:///{tmp_path / 'locking.sqlite3'}")
-    Base.metadata.create_all(engine)
+def test_stale_concurrent_edition_is_rejected(db_engine):
+    engine = db_engine
     with Session(engine) as setup:
         row = AssessmentRow(title="Initial")
         setup.add(row)
@@ -36,13 +32,11 @@ def test_stale_concurrent_edition_is_rejected(tmp_path: Path):
         two.rollback()
     with Session(engine) as check:
         assert check.get(AssessmentRow, aid).title == "First writer"
-    engine.dispose()
 
 
-def test_pilot_revision_precondition_returns_428_and_412(monkeypatch, tmp_path: Path):
+def test_pilot_revision_precondition_returns_428_and_412(monkeypatch, db_engine):
     monkeypatch.setenv("ADVISORY_DEPLOYMENT_MODE", "pilot")
-    engine = create_engine(f"sqlite:///{tmp_path / 'revision.sqlite3'}")
-    Base.metadata.create_all(engine)
+    engine = db_engine
     with Session(engine) as db:
         db.info["principal"] = Principal("reviewer", "tenant-a", "reviewer")
         row = AssessmentRow(title="Draft", revision=7)
@@ -58,7 +52,6 @@ def test_pilot_revision_precondition_returns_428_and_412(monkeypatch, tmp_path: 
         db.info["if_match"] = '"7"'
         assert_current_revision(row)
         db.rollback()
-    engine.dispose()
 
 
 @pytest.mark.parametrize(
@@ -111,17 +104,14 @@ def test_production_remains_blocked_even_with_pilot_configuration(monkeypatch):
         check_deployment_configuration()
 
 
-def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
+def test_database_readiness_is_not_a_release_approval(unmigrated_engine):
     from fastapi.testclient import TestClient
     from sqlalchemy import text
 
     from app.db.session import get_db
     from app.main import app
 
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'readiness.sqlite3'}", connect_args={"check_same_thread": False}
-    )
-    Base.metadata.create_all(engine)
+    engine = unmigrated_engine
 
     def override_db():
         with Session(engine) as db:
@@ -141,4 +131,3 @@ def test_database_readiness_is_not_a_release_approval(tmp_path: Path):
             assert client.get("/ready").json() == {"status": "ready"}
     finally:
         app.dependency_overrides.clear()
-        engine.dispose()
