@@ -3,8 +3,8 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, Boolean, UniqueConstraint
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, Boolean, UniqueConstraint, event
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, object_session, relationship
 
 
 def new_id() -> str:
@@ -91,7 +91,7 @@ class AnswerRow(Base):
     value: Mapped[dict] = mapped_column(JSON)
     kind: Mapped[str] = mapped_column(String(24))
     source: Mapped[str | None] = mapped_column(String(200))
-    confidence: Mapped[float | None] = mapped_column()
+    confidence: Mapped[float | None] = mapped_column(Float())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="answers")
 
@@ -102,6 +102,7 @@ class ReviewRow(Base):
     assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), index=True)
     analysis_revision: Mapped[int] = mapped_column(Integer)
     reviewer_id: Mapped[str] = mapped_column(String(200))
+    reviewer_organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id", ondelete="RESTRICT"), index=True)
     selected_category: Mapped[str] = mapped_column(String(60))
     rationale: Mapped[str] = mapped_column(Text)
     override_reason: Mapped[str | None] = mapped_column(Text)
@@ -117,6 +118,8 @@ class AuditRow(Base):
     assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(70))
     actor: Mapped[str] = mapped_column(String(200), default="local_demo")
+    actor_organization_id: Mapped[str | None] = mapped_column(ForeignKey("organizations.id", ondelete="RESTRICT"), index=True)
+    actor_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
@@ -280,3 +283,22 @@ class PocObservationRow(Base):
     source_reference: Mapped[str] = mapped_column(String(300), nullable=False)
     created_by: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
+@event.listens_for(AuditRow, "before_insert")
+def _stamp_audit_actor(_mapper, _connection, target: AuditRow) -> None:
+    """Attribute audit events to the server-side principal, never to request input.
+
+    The authenticated principal of the current session is the only accepted actor.
+    Rows written outside a request (operator scripts) keep their explicit actor
+    and stay marked unverified.
+    """
+    session = object_session(target)
+    principal = session.info.get("principal") if session is not None else None
+    if principal is None:
+        target.actor_verified = False
+        target.actor_organization_id = None
+        return
+    target.actor = principal.subject
+    target.actor_organization_id = principal.organization_id
+    target.actor_verified = bool(principal.verified)

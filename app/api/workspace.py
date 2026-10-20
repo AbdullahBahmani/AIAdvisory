@@ -74,7 +74,7 @@ def _notice(db: Session, row: AssessmentRow, recipient: str, event: str, message
 def list_members(db: Session = Depends(get_db)):
     require_role(db, "admin")
     p = current_principal(db)
-    if p.demo:
+    if not p.verified:
         return []
     members = {}
     member_conditions = [
@@ -108,7 +108,7 @@ def get_reviewer(assessment_id: str, db: Session = Depends(get_db)):
 def assign_reviewer(assessment_id: str, payload: AssignmentCreate, db: Session = Depends(get_db)):
     require_role(db, "admin")
     p = current_principal(db)
-    if p.demo or not p.organization_id:
+    if not p.verified or not p.organization_id:
         raise HTTPException(status_code=403, detail="Assignments require an authenticated organization administrator")
     row = get_or_404(db, AssessmentRow, assessment_id)
     db.refresh(row, with_for_update=True)
@@ -177,7 +177,9 @@ def get_approvals(assessment_id: str, db: Session = Depends(get_db)):
 @router.post("/assessments/{assessment_id}/approvals", response_model=ApprovalView, status_code=201)
 def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Depends(get_db)):
     p = current_principal(db)
-    if p.demo:
+    if not p.verified:
+        # The synthetic demo identity cannot satisfy a separation-of-duties chain:
+        # every stage would collapse onto one shared, unverified actor.
         raise HTTPException(status_code=403, detail="Enterprise approval requires an authenticated reviewer")
     require_role(db, "admin" if payload.stage == "business" else "reviewer")
     row = get_or_404(db, AssessmentRow, assessment_id)
@@ -212,7 +214,7 @@ def cast_approval(assessment_id: str, payload: ApprovalCreate, db: Session = Dep
 def workspace_summary(db: Session = Depends(get_db)):
     p = current_principal(db)
     scope = [AssessmentRow.status != "deleted"]
-    if not p.demo:
+    if p.verified:
         scope.append(AssessmentRow.organization_id == p.organization_id)
     statuses = db.execute(
         select(AssessmentRow.status, func.count(AssessmentRow.id))
@@ -221,7 +223,7 @@ def workspace_summary(db: Session = Depends(get_db)):
     by_status = {s: count for s, count in statuses}
     assigned = 0
     unread = 0
-    if not p.demo:
+    if p.verified:
         assigned = db.scalar(select(func.count(ReviewerAssignmentRow.id)).join(
             AssessmentRow, ReviewerAssignmentRow.assessment_id == AssessmentRow.id,
         ).where(
@@ -242,7 +244,7 @@ def workspace_summary(db: Session = Depends(get_db)):
 @router.get("/workspace/inbox")
 def inbox(db: Session = Depends(get_db)):
     p = current_principal(db)
-    if p.demo:
+    if not p.verified:
         return {"assigned_assessments": [], "notifications": []}
     assignments = db.execute(select(AssessmentRow).join(
         ReviewerAssignmentRow, ReviewerAssignmentRow.assessment_id == AssessmentRow.id,
@@ -266,7 +268,7 @@ def inbox(db: Session = Depends(get_db)):
 @router.post("/workspace/notifications/{notification_id}/read", response_model=NotificationView)
 def read_notification(notification_id: str, db: Session = Depends(get_db)):
     p = current_principal(db)
-    if p.demo:
+    if not p.verified:
         raise HTTPException(status_code=404, detail="Notification not found")
     item = db.scalar(select(InboxNotificationRow).where(
         InboxNotificationRow.id == notification_id,
