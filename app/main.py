@@ -1,6 +1,6 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -22,12 +22,10 @@ from app.domain.schemas import (
     DiscoveryResult,
     Question,
 )
-from app.security import authenticate_request
+from app.security import Principal, authenticate_request
 from app.services.assessment import analyze
 from app.services.discovery import QUESTIONS, summarize_discovery
-from app.telemetry import instrument_request
-
-APP_VERSION = "0.8.0"
+from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request, render_metrics
 
 #: Schema revisions this build can serve. ``0008_portfolio`` is the previous
 #: head and stays supported; ``0010_index_and_constraint_hardening`` adds the
@@ -86,6 +84,25 @@ def health() -> HealthResponse:
     return HealthResponse(
         status="ok", service="ai-opportunity-advisor-api", version=APP_VERSION, mode="rules-only"
     )
+
+
+@app.get("/metrics", include_in_schema=False, tags=["health"])
+def metrics(
+    principal: Principal = Depends(authenticate_request),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Operator metrics in the Prometheus text exposition format.
+
+    Authenticated with the same dependency as the rest of the API (a viewer
+    credential is enough) and scoped to the caller's organization, because the
+    output contains tenant-derived business aggregates, not only liveness
+    information. The endpoint exposes counts, sums and bounded labels only:
+    never assessment content, customer data, reviewer names, tokens,
+    identifiers, request bodies or request ids. See ``docs/metrics.md``.
+    """
+    organization_id = None if principal.demo else principal.organization_id
+    body = render_metrics(db=db, organization_id=organization_id)
+    return Response(content=body, media_type=METRICS_CONTENT_TYPE)
 
 
 @app.get(
