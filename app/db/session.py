@@ -64,7 +64,14 @@ REQUIRED_SCHEMA_COLUMNS: dict[str, tuple[str, ...]] = {
     "reviews": ("reviewer_organization_id",),
     # The chain columns are required: the running code writes them on every audit
     # event, so a database without them is not one this build can serve.
-    "audit_events": ("actor_organization_id", "actor_verified", "sequence", "chain_hash"),
+    "audit_events": (
+        "actor_organization_id",
+        "actor_verified",
+        "sequence",
+        "chain_hash",
+        "organization_id",
+    ),
+    "api_credentials": ("unlimited", "overlap_until", "replaced_by_id"),
 }
 
 

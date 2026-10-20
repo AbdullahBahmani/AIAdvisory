@@ -16,8 +16,9 @@ import hashlib
 import os
 import re
 import secrets
+import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
@@ -31,6 +32,17 @@ from app.throttling import enforce_limit
 TOKEN_RE = re.compile(r"^Bearer (aia_[A-Za-z0-9_-]{35,})$")
 ROLE_LEVEL = {"viewer": 1, "analyst": 2, "reviewer": 3, "admin": 4}
 SYNTHETIC_DEMO_SUBJECT = "local_demo"
+
+#: Strict expiry leeway, in seconds.
+#:
+#: A stored credential is refused from this many seconds **before** its stated
+#: expiry, never after it. This is deliberately not a grace period: it bounds
+#: the damage of a server clock that runs slow (or a client clock that runs
+#: fast) by exactly 30 seconds, so a credential can never be used more than
+#: 30 seconds past its real expiry. The value is part of the documented
+#: policy in ``docs/credential-lifecycle.md`` and is asserted by the test
+#: suite; changing it is a policy change, not a refactor.
+CREDENTIAL_EXPIRY_LEEWAY = timedelta(seconds=30)
 
 
 @dataclass(frozen=True)
@@ -71,22 +83,120 @@ def _demo_allowed(request: Request) -> bool:
     return os.getenv("ADVISORY_DEMO_MODE") == "1"
 
 
+def as_utc(value: datetime) -> datetime:
+    """Interpret a stored timestamp as UTC.
+
+    SQLite hands back naive datetimes; PostgreSQL hands back aware ones.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+#: Window in which repeated rejections of the same credential are collapsed
+#: into one audit event.
+REJECTION_AUDIT_WINDOW_SECONDS = 60
+
+#: Credential id -> monotonic time of the last rejection event written.
+_rejection_audited_at: dict[str, float] = {}
+
+
+def _should_audit_rejection(credential_id: str) -> bool:
+    """True when this rejection must be written to the audit trail."""
+    global _rejection_audited_at
+    now = time.monotonic()
+    last = _rejection_audited_at.get(credential_id)
+    if last is not None and now - last < REJECTION_AUDIT_WINDOW_SECONDS:
+        return False
+    if len(_rejection_audited_at) > 4096:
+        cutoff = now - REJECTION_AUDIT_WINDOW_SECONDS
+        _rejection_audited_at = {
+            key: value for key, value in _rejection_audited_at.items() if value >= cutoff
+        }
+    _rejection_audited_at[credential_id] = now
+    return True
+
+
+def credential_is_expired(row: ApiCredentialRow, now: datetime | None = None) -> bool:
+    """True when a credential must no longer be accepted.
+
+    A credential without an expiry is only valid when the operator explicitly
+    opted into an unlimited credential. A row that lost that flag (for example
+    because it was edited outside the operator CLI) fails closed instead of
+    becoming a standing key by accident.
+
+    The expiry is compared with the strict leeway: the credential dies
+    ``CREDENTIAL_EXPIRY_LEEWAY`` *before* its stated expiry, so a clock that
+    is skewed cannot extend its life.
+    """
+    now = now or datetime.now(UTC)
+    if row.expires_at is None:
+        return not bool(row.unlimited)
+    return as_utc(row.expires_at) - CREDENTIAL_EXPIRY_LEEWAY <= now
+
+
+def credential_is_live(row: ApiCredentialRow, now: datetime | None = None) -> bool:
+    """True when a credential may still authenticate a request."""
+    now = now or datetime.now(UTC)
+    if row.revoked_at is not None:
+        return False
+    if row.overlap_until is not None and as_utc(row.overlap_until) <= now:
+        # The bounded rotation overlap is over; the credential is dead.
+        return False
+    return not credential_is_expired(row, now)
+
+
+def _audit_rejected_credential(db: Session, row: ApiCredentialRow, reason: str) -> None:
+    """Record the attempted use of a revoked or expired credential.
+
+    The rejection itself must never depend on the audit write succeeding: a
+    failure here is swallowed and the request is still refused. The event is
+    written and committed immediately because the request is about to fail and
+    the request-scoped session would otherwise roll the row back.
+
+    The write is throttled per credential: somebody presenting a revoked
+    credential in a loop must not be able to fill the audit table with one
+    event per request. The first use of a credential is always audited; repeats
+    inside the window are collapsed into that first event.
+    """
+    from app.services.audit import audit_tenant
+
+    if not _should_audit_rejection(row.id):
+        return
+    try:
+        audit_tenant(
+            db,
+            "credential.use_rejected",
+            organization_id=row.organization_id,
+            actor=row.subject,
+            credential_id=row.id,
+            credential_subject=row.subject,
+            role=row.role,
+            reason=reason,
+        )
+        db.commit()
+    except Exception:  # pragma: no cover - auditing must not change the answer
+        db.rollback()
+
+
 def _credential_principal(db: Session, token: str) -> Principal:
     """Resolve a stored API credential into a verified, organization-scoped principal.
 
     Revoked, expired, malformed and organization-less credentials all fail closed.
+    The use of a revoked or expired credential is audited.
     """
     row = db.scalar(
         select(ApiCredentialRow).where(ApiCredentialRow.token_hash == digest_token(token))
     )
     now = datetime.now(UTC)
-    if row is None or row.revoked_at is not None or row.role not in ROLE_LEVEL:
+    if row is None:
         raise HTTPException(status_code=401, detail="Invalid or revoked API credential")
-    expiration = row.expires_at
-    if (
-        expiration is not None
-        and (expiration.replace(tzinfo=UTC) if expiration.tzinfo is None else expiration) <= now
-    ):
+    if row.revoked_at is not None:
+        _audit_rejected_credential(db, row, "revoked")
+        raise HTTPException(status_code=401, detail="Invalid or revoked API credential")
+    if row.role not in ROLE_LEVEL:
+        raise HTTPException(status_code=401, detail="Invalid or revoked API credential")
+    if not credential_is_live(row, now):
+        reason = "expired" if credential_is_expired(row, now) else "overlap_ended"
+        _audit_rejected_credential(db, row, reason)
         raise HTTPException(status_code=401, detail="Expired API credential")
     if not row.organization_id:
         raise HTTPException(status_code=401, detail="API credential has no organization")

@@ -222,14 +222,25 @@ class ReviewRow(Base):
 
 
 class AuditRow(Base):
+    """One append-only audit event.
+
+    An event belongs either to a single assessment (``assessment_id``) or to
+    an organization (``organization_id``). Organization-scoped events record
+    credential and membership lifecycle changes, which are not about one
+    assessment but still have to be attributable and exportable.
+    """
+
     __tablename__ = "audit_events"
     __table_args__ = (
         UniqueConstraint("assessment_id", "sequence", name="uq_audit_events_assessment_sequence"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    assessment_id: Mapped[str] = mapped_column(
+    assessment_id: Mapped[str | None] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
+    )
+    organization_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organizations.id", ondelete="RESTRICT"), index=True
     )
     event_type: Mapped[str] = mapped_column(String(70))
     actor: Mapped[str] = mapped_column(String(200), default="local_demo")
@@ -245,7 +256,7 @@ class AuditRow(Base):
     sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
+    assessment: Mapped["AssessmentRow | None"] = relationship(back_populates="audit_events")
 
 
 class OrganizationRow(Base):
@@ -258,6 +269,19 @@ class OrganizationRow(Base):
 
 
 class ApiCredentialRow(Base):
+    """One stored API credential.
+
+    The lifecycle fields carry the policy of ``docs/credential-lifecycle.md``:
+
+    * ``expires_at`` is the expiry. ``NULL`` means *never expires* and is only
+      accepted when ``unlimited`` is True, so a standing key is always an
+      explicit operator opt-in and never a default.
+    * ``revoked_at`` is set the moment the credential stops working.
+    * ``overlap_until`` marks a credential that was rotated away but is still
+      accepted for an explicitly bounded overlap window. It expires by itself.
+    * ``replaced_by_id`` records the rotation lineage for the access review.
+    """
+
     __tablename__ = "api_credentials"
     # Membership lookup on the request path: organization_id + subject.
     __table_args__ = (
@@ -270,8 +294,11 @@ class ApiCredentialRow(Base):
     subject: Mapped[str] = mapped_column(String(200), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    unlimited: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    overlap_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    replaced_by_id: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False
     )
@@ -483,13 +510,13 @@ def _stamp_audit_actor(_mapper, _connection, target: AuditRow) -> None:
 
     The authenticated principal of the current session is the only accepted actor.
     Rows written outside a request (operator scripts) keep their explicit actor
-    and stay marked unverified.
+    and stay marked unverified: an operator command is not a human identity
+    proof, so it must never look like a verified principal.
     """
     session = object_session(target)
     principal = session.info.get("principal") if session is not None else None
     if principal is None:
         target.actor_verified = False
-        target.actor_organization_id = None
         return
     target.actor = principal.subject
     target.actor_organization_id = principal.organization_id

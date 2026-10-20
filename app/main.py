@@ -40,8 +40,12 @@ from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request,
 #: ``0011_audit_chain`` adds the tamper-evident audit chain columns;
 #: ``0012_scim_provisioning`` adds the SCIM provisioning and approval-policy
 #: tables; ``0013_notification_delivery`` adds the notification destinations
-#: and the queued outbound deliveries. All of them run the same application
-#: code, so every revision in this set is a healthy database.
+#: and the queued outbound deliveries; ``0014_credential_lifecycle`` adds the
+#: credential lifecycle columns (explicit expiry, rotation overlap) and the
+#: organization scope of audit events. The lifecycle and chain columns are
+#: required by the running code, so a database that has not applied them is
+#: not ready. All of these revisions run the same application code, so every
+#: revision in this set is a healthy database.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
@@ -50,6 +54,7 @@ SUPPORTED_SCHEMA_REVISIONS = frozenset(
         "0011_audit_chain",
         "0012_scim_provisioning",
         "0013_notification_delivery",
+        "0014_credential_lifecycle",
     }
 )
 

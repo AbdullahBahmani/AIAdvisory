@@ -7,7 +7,6 @@ execution or independent deployment. No user-submitted actor/tenant is trusted.
 from __future__ import annotations
 
 import os
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -38,7 +37,7 @@ from app.domain.collaboration import (
     NotificationView,
     WorkspaceSummary,
 )
-from app.security import ROLE_LEVEL, current_principal, require_role
+from app.security import ROLE_LEVEL, credential_is_live, current_principal, require_role
 from app.services.approval_chain import STAGES
 from app.services.approval_policy import (
     contribution_conflict,
@@ -72,11 +71,8 @@ def _active_member(db: Session, subject: str, org: str) -> bool:
             ApiCredentialRow.revoked_at.is_(None),
         )
     ).all()
-    now = datetime.now(UTC)
     return any(
-        ROLE_LEVEL.get(c.role, 0) >= ROLE_LEVEL["reviewer"]
-        and (c.expires_at.replace(tzinfo=UTC) if c.expires_at.tzinfo is None else c.expires_at)
-        > now
+        ROLE_LEVEL.get(c.role, 0) >= ROLE_LEVEL["reviewer"] and credential_is_live(c)
         for c in credentials
     )
 
@@ -118,19 +114,13 @@ def list_members(db: Session = Depends(get_db)):
             subject=item.subject, role=item.role, provider="oidc"
         )
     if os.getenv("ADVISORY_OIDC_REQUIRED") != "1":
-        now = datetime.now(UTC)
         for item in db.scalars(
             select(ApiCredentialRow).where(
                 ApiCredentialRow.organization_id == p.organization_id,
                 ApiCredentialRow.revoked_at.is_(None),
             )
         ):
-            expiration = (
-                item.expires_at.replace(tzinfo=UTC)
-                if item.expires_at.tzinfo is None
-                else item.expires_at
-            )
-            if expiration > now:
+            if credential_is_live(item):
                 members[("token", item.subject)] = MemberView(
                     subject=item.subject, role=item.role, provider="token"
                 )
