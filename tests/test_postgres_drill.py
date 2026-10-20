@@ -39,7 +39,12 @@ from tests.backend import STATEMENTS
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DRILL_SCHEMA = "aiadvisory_pg_drill"
 DOWNGRADE_SCHEMA = "aiadvisory_pg_drill_downgrade"
-HEAD_REVISION = "0010_index_and_constraint_hardening"
+# The head revision is derived from the migration chain rather than hard-coded: a new
+# migration must not turn this into a false failure, and a stale constant would silently
+# stop checking what it claims to check.
+from tests.backend import expected_head_revision  # noqa: E402
+
+HEAD_REVISION = expected_head_revision()
 STEP_ORDER_CONSTRAINT = "uq_workflow_steps_workflow_position"
 
 
