@@ -133,7 +133,7 @@ def render_workspace(st, base_url: str, level: int = 2) -> None:
                 {"Status": name.replace("_", " ").title(), "Count": n}
                 for name, n in summary["by_status"].items()
             ],
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     inbox = _call(st, base_url, "GET", "/api/v1/workspace/inbox")

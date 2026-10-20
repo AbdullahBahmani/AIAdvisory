@@ -178,7 +178,7 @@ def render_portfolio_dashboard(st, base: str, level: int = 2) -> None:
         "Table: planning priority, evidence coverage and PoC outcomes per opportunity. "
         "Planning priority is a provisional heuristic, not a validated ranking."
     )
-    st.dataframe(data, hide_index=True, use_container_width=True)
+    st.dataframe(data, hide_index=True, width="stretch")
     st.caption("* Targets reflect self-reported observations and are not validated causal impacts.")
     by_id = {r["assessment_id"]: r for r in rows}
     chosen = st.selectbox(
@@ -379,7 +379,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                             "Breakeven (net = 0)": breakeven_text,
                         }
                     )
-                st.dataframe(rows, hide_index=True, use_container_width=True)
+                st.dataframe(rows, hide_index=True, width="stretch")
                 st.caption(envelope["disclaimer"])
     with st.expander("Compare scenarios (one currency and period)"):
         st.caption(
@@ -414,7 +414,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                         for row in comparison["rows"]
                     ],
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",
                 )
                 st.caption(comparison["disclaimer"])
     with st.expander("Create an illustrative scenario"):
