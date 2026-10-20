@@ -483,11 +483,12 @@ def analyzed(client):
 
 #: The SHA-256 of the English report as the product ships it.  Any change to
 #: the English artefact breaks this test.  Re-baselined on 2026-10-20 when the
-#: deterministic architecture-pattern diagrams were added to the export; the
-#: intent is unchanged — the English export must stay byte-stable, and the
+#: deterministic architecture-pattern diagrams were added to the export, and
+#: again when the control gates were attached to the flow entry of a diagram.
+#: The intent is unchanged — the English export must stay byte-stable, and the
 #: locale must never be what changes it.
-ENGLISH_MARKDOWN_SHA256 = "b7205b6c710f31ca7b6ed4745ff2e2c6e4489365e2d57f3044ac092b098f6243"
-ENGLISH_HTML_SHA256 = "39f6a76ad28548aac0b3eb81905f9206b7868f68b2e7392889feb3f753e7a65d"
+ENGLISH_MARKDOWN_SHA256 = "318faa965fc92c687cdab43352487921b9669692735dcdcec66e3a1aaa3736c1"
+ENGLISH_HTML_SHA256 = "f3914a2422189bec371a93e6c20230df8cb04d89a5b0596df4f78b8a5359ef45"
 
 
 def test_the_english_report_is_byte_identical_to_the_previous_artefact(analyzed) -> None:

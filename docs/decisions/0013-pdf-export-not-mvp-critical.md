@@ -1,7 +1,9 @@
 # ADR-0013: PDF export is not MVP-critical
 
 **Date:** 2026-10-20
-**Status:** Accepted
+**Status:** Accepted — **the deferral is superseded by
+[ADR-0015](0015-server-side-pdf-export.md)** (2026-10-21). The five conditions below were met
+before the PDF pipeline was built, and they are carried over into ADR-0015.
 **Answers:** `main-planner.md` §13 open decision "whether PDF is MVP-critical".
 
 ## Context

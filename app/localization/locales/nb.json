@@ -285,6 +285,7 @@
   "ui.portfolio.unknown": "Ukjent",
   "ui.reporting.LABEL_DOWNLOAD_HTML": "Last ned HTML-rapport",
   "ui.reporting.LABEL_DOWNLOAD_MARKDOWN": "Last ned Markdown-rapport",
+  "ui.reporting.LABEL_DOWNLOAD_PDF": "Last ned PDF-rapport",
   "ui.reporting.caption": "Dokumentasjonstemplet øyeblikksbilde av den gjeldende deterministiske analysen og eventuelle uverifiserte AI-forslag. Ingen godkjenning for utrulling.",
   "ui.reporting.failed": "Henting av rapporten mislyktes: {error}",
   "ui.reporting.preview": "Forhåndsvis rapport (Markdown)",

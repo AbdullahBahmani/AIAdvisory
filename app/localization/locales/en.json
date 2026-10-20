@@ -285,6 +285,7 @@
   "ui.portfolio.unknown": "Unknown",
   "ui.reporting.LABEL_DOWNLOAD_HTML": "Download HTML report",
   "ui.reporting.LABEL_DOWNLOAD_MARKDOWN": "Download Markdown report",
+  "ui.reporting.LABEL_DOWNLOAD_PDF": "Download PDF report",
   "ui.reporting.caption": "Evidence-labeled snapshot of the current deterministic analysis and optional unverified AI suggestions. No rollout authorization.",
   "ui.reporting.failed": "Report retrieval failed: {error}",
   "ui.reporting.preview": "Preview report (Markdown)",

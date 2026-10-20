@@ -22,9 +22,9 @@ a pure function of the spec, so the picture is reproducible byte for byte.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from html import escape as html_escape
-import re
 
 from app.domain.enums import RecommendationCategory
 from app.domain.schemas import TaskAnalysis
@@ -81,10 +81,10 @@ class Diagram:
     notes: tuple[str, ...] = ()
 
 
-def _node(
-    node_id: str, label: str, kind: NodeKind, caption: str = ""
-) -> DiagramNode:
-    return DiagramNode(id=node_id, label=_single_line(label), kind=kind, caption=_single_line(caption))
+def _node(node_id: str, label: str, kind: NodeKind, caption: str = "") -> DiagramNode:
+    return DiagramNode(
+        id=node_id, label=_single_line(label), kind=kind, caption=_single_line(caption)
+    )
 
 
 def _single_line(text: str) -> str:
@@ -113,16 +113,14 @@ def _edges(
     """
     flow = [node for node in nodes if node.kind not in {"control", "excluded"}]
     result: list[DiagramEdge] = []
-    for first, second in zip(flow, flow[1:]):
+    for first, second in zip(flow, flow[1:], strict=False):
         result.append(DiagramEdge(source=first.id, target=second.id))
     for source, target, label, dashed in edges or []:
         result.append(DiagramEdge(source=source, target=target, label=label, dashed=dashed))
     return tuple(result)
 
 
-def _pattern_nodes(
-    category: RecommendationCategory, translator: Translator
-) -> list[DiagramNode]:
+def _pattern_nodes(category: RecommendationCategory, translator: Translator) -> list[DiagramNode]:
     """The main flow for a recommendation category.
 
     The category is the contract value; the labels around it are text.
@@ -511,6 +509,7 @@ def render_svg(diagram: Diagram) -> str:
 
     parts.append("</svg>")
     return "".join(parts)
+
 
 def render_mermaid(diagram: Diagram) -> str:
     """Render the diagram as a Mermaid flowchart for the Markdown export."""

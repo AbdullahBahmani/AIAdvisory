@@ -56,7 +56,8 @@ def test_markdown_and_html_include_same_decisions_and_controls(client):
     assert "text/html" in html.headers["content-type"]
     assert "default-src 'none'" in html.headers["content-security-policy"]
     assert md.text == client.get(f"/api/v1/assessments/{aid}/report?format=markdown").text
-    assert client.get(f"/api/v1/assessments/{aid}/report?format=pdf").status_code == 422
+    assert client.get(f"/api/v1/assessments/{aid}/report?format=pdf").status_code == 200
+    assert client.get(f"/api/v1/assessments/{aid}/report?format=docx").status_code == 422
 
 
 def test_html_escapes_untrusted_input_and_markdown_does_not_inject_headings(client):
@@ -143,8 +144,14 @@ def test_ui_download_adapter_preserves_content_bytes_and_format():
         assert fetch_report("http://127.0.0.1:8000/", "abc123", "markdown") == content
     url = called.call_args.args[0].full_url
     assert url == "http://127.0.0.1:8000/api/v1/assessments/abc123/report?format=markdown"
+    with patch("ui.reporting.urlopen", return_value=FakeResponse(b"%PDF-1.4")) as called:
+        assert fetch_report("http://127.0.0.1:8000", "abc123", "pdf") == b"%PDF-1.4"
+    assert (
+        called.call_args.args[0].full_url
+        == "http://127.0.0.1:8000/api/v1/assessments/abc123/report?format=pdf"
+    )
     with pytest.raises(ValueError):
-        fetch_report("http://127.0.0.1:8000", "abc", "pdf")
+        fetch_report("http://127.0.0.1:8000", "abc", "docx")
     with pytest.raises(ValueError):
         fetch_report("http://127.0.0.1:8000", "../../other", "markdown")
     with patch("ui.reporting.urlopen", return_value=FakeResponse(b"x" * 4_000_001)):

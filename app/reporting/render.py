@@ -917,9 +917,7 @@ def render_markdown(
                 lines += [render_mermaid(diagram), ""]
                 # A plain-text description keeps the picture readable in any
                 # Markdown renderer, including one without Mermaid support.
-                lines += [
-                    "> " + line for line in describe(diagram).splitlines()
-                ] + [""]
+                lines += ["> " + line for line in describe(diagram).splitlines()] + [""]
     return "\n".join(lines).rstrip() + "\n"
 
 

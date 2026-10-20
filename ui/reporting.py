@@ -15,6 +15,17 @@ from ui.accessibility import heading
 
 LABEL_DOWNLOAD_MARKDOWN = "Download Markdown report"
 LABEL_DOWNLOAD_HTML = "Download HTML report"
+LABEL_DOWNLOAD_PDF = "Download PDF report"
+
+#: The export formats the adapter may request.
+REPORT_FORMATS = ("markdown", "html", "pdf")
+
+#: The media type of each export format.
+_MEDIA_TYPES = {
+    "markdown": "text/plain",
+    "html": "text/html",
+    "pdf": "application/pdf",
+}
 
 
 def fetch_report(
@@ -26,14 +37,14 @@ def fetch_report(
     bearer_token: str | None = None,
     locale: str | None = None,
 ) -> bytes:
-    if format not in ("markdown", "html"):
-        raise ValueError("Report format must be markdown or html")
+    if format not in REPORT_FORMATS:
+        raise ValueError("Report format must be markdown, html or pdf")
     if not assessment_id or any(c in assessment_id for c in "?#/\\"):
         raise ValueError("Invalid assessment identifier")
     path = f"/api/v1/assessments/{quote(assessment_id, safe='')}/report?format={format}"
     if locale:
         path += f"&locale={quote(locale, safe='')}"
-    headers = {"Accept": "text/plain" if format == "markdown" else "text/html"}
+    headers = {"Accept": _MEDIA_TYPES[format]}
     if bearer_token:
         headers["Authorization"] = "Bearer " + bearer_token
     request = Request(f"{base_url.rstrip('/')}{path}", headers=headers)
@@ -75,6 +86,7 @@ def render_report_tab(st, base_url: str, assessment: dict, level: int = 3) -> No
             base_url, assessment_id, "markdown", bearer_token=token, locale=locale
         )
         html = fetch_report(base_url, assessment_id, "html", bearer_token=token, locale=locale)
+        pdf = fetch_report(base_url, assessment_id, "pdf", bearer_token=token, locale=locale)
     except (OSError, ValueError) as exc:
         st.error(t("ui.reporting.failed", "Report retrieval failed: {error}", error=exc))
         return
@@ -89,6 +101,12 @@ def render_report_tab(st, base_url: str, assessment: dict, level: int = 3) -> No
         data=html,
         file_name=f"assessment-{assessment_id}.html",
         mime="text/html",
+    )
+    st.download_button(
+        LABEL_DOWNLOAD_PDF,
+        data=pdf,
+        file_name=f"assessment-{assessment_id}.pdf",
+        mime="application/pdf",
     )
     with st.expander(t("ui.reporting.preview", "Preview report (Markdown)")):
         st.caption(

@@ -180,7 +180,9 @@ def test_the_svg_is_self_contained() -> None:
     assert svg.count("http://") == svg.count('xmlns="http://www.w3.org/2000/svg"')
     assert "https://" not in svg
     for reference in re.findall(r"url\(([^)]*)\)", svg):
-        assert reference.startswith("#"), f"the SVG references something outside itself: {reference}"
+        assert reference.startswith("#"), (
+            f"the SVG references something outside itself: {reference}"
+        )
 
 
 def test_untrusted_text_cannot_break_out_of_the_diagram() -> None:
