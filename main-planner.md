@@ -339,7 +339,7 @@ Each checkbox is a trackable task; update this section as implementation progres
 **Exit (local demonstration):** Three in-memory persistence/API demo workflows produce Markdown+HTML reports showing AI, traditional software, and human-approved hybrid outcomes. Four offline curated policy fixtures pass. 59 tests on reconstructed Phase 2+new Phase 4 code pass; full merged Phase 3+4 suite, a live Streamlit browser check, and operational/real-data evaluation are **still pending** (the Docker/Compose local deployment was verified separately on 2026-10-19, see P4-05), so Phase 4 is not production validated.
 
 ### Phase 5 — Production-readiness gate (days 28–30 for assessment; hardening may take longer)
-- [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route. **Partial:** API credentials, RBAC, tenant checks and credential-bound review logs done; independent IdP/SSO/MFA/membership lifecycle pending. **Additional implementation 2026-10-13:** OIDC signed JWTs use pinned issuer/audience/JWKS and locally provisioned organization membership; OIDC-only mode available. Real IdP and MFA integration and full merged auth tests remain unverified.
+- [ ] P5-01 Add authentication, RBAC and tenant isolation before inviting real users; authorization tests for every data/export route. **Partial:** API credentials, RBAC, tenant checks and credential-bound review logs done; **the credential and membership lifecycle is now implemented (2026-10-20)** — expiry is mandatory and enforced in the strict direction (a credential is refused 30 seconds *before* its stated expiry, never after, and there is no grace period); a credential with no expiry requires an explicit `--unlimited` opt-in with a stated reason and is labelled UNLIMITED wherever it is listed; rotation retires the previous credential first and issues the replacement in the same transaction, so a failure mid-rotation never leaves two valid credentials; a live credential whose role exceeds the holder's effective active membership role is revoked, and a reviewer assignment is CLEARED whenever the assigned reviewer can no longer act, which closes the risk of an assessment waiting forever for a review nobody can perform; a revocation that would leave an organization without an administrator is refused unless the operator explicitly overrides, and the override is audited. New operator commands: `sweep-membership-lifecycle` (reports by default, acts only with `--execute`) and `access-review` (the human-readable artefact an auditor asks for). OIDC signed JWTs use pinned issuer/audience/JWKS and locally provisioned organization membership, and OIDC-only mode is available. **Still open:** a real IdP session, MFA, and IdP-driven de-provisioning — a stored credential proves possession of a secret, not human identity.
 - [ ] P5-02 Confirm external-model policy, privacy, residency, deletion, retention, safe logging and model-provider configuration. **Partial:** provider permission checks retained and secrets not logged; actual DPIA/DLP, residency, contract, retention and deletion workflows pending. **Additional:** offline scoped hard-deletion command (dry-run default) and SQLite online backup. Policy, consent, data residency, legal hold and backup expiry still need independent sign-off.
 - [ ] P5-03 Migrate/test PostgreSQL; review indexes, migrations, backup/restore and failure recovery. **Local drill verified 2026-10-20:** against a real `postgres:16-alpine` instance the full 0001→0008 migration chain applies to an empty database with `alembic check` reporting no drift and round-trips through `downgrade base`; optimistic locking yields exactly one winner and a 409 on the losing concurrent HTTP write; `If-Match` returns 428/412/200; `SELECT … FOR UPDATE` verifiably blocks a second writer (which SQLite cannot demonstrate); the rate limiter's `ON CONFLICT DO UPDATE` is atomic under 24 parallel writers; and `pg_dump` → `pg_restore` into a second independent container reproduced identical row counts on 12 key tables with the same API reads. Six concrete index findings from the live catalogue are recorded and being addressed. **Still open for production:** a managed cluster with TLS/`verify-full` and least-privilege accounts, encrypted off-site backups with PITR, retention/rotation/legal-hold, capacity and load testing, failover, a backend-parametrised test suite (the pre-existing tests were SQLite-bound), and failure-recovery drills. The local drill's 0.25 s dump/restore is **not** an RPO/RTO measurement.
 - [x] P5-04 Add structured telemetry (request ID, latency, provider, token usage, rule/prompt versions, errors and overrides); never log sensitive raw content. **Verified 2026-10-20:** `GET /metrics` serves the Prometheus text exposition format (written by hand, no new dependency) with request counts and latency by route template and status class, the running policy and prompt versions, per-rule hit counts and **per-rule firing analyses** — so a rule that silently stops firing shows zero, which is the failure the evaluation corpus exists to catch — review and FDE-override counts, AI token totals, and AI cost with an explicit **priced/unpriced split**. The endpoint is **authenticated and tenant-scoped** (401 without a credential), because it exposes tenant-derived aggregates; the demo bypass is not widened. Redaction is enforced in code: no content, no identifiers (the request id is deliberately not a metric), and low-cardinality labels with overflow collapsing to `other`. `scripts/metrics_check.py` turns the failure modes into PASS/WARN/FAIL on a schedule. `scripts/spend_report.py` aggregates provider spend and reports the priced/unpriced split honestly — an unpriced run has **unknown** cost, never an estimate. **Still open:** externally operated dashboards and alert delivery, and a scheduled provider-spend job; the suggested thresholds are documented as suggestions to tune, **not** validated SLOs.
@@ -506,8 +506,38 @@ independently attested to by a source-code commit.
   E2E against an operator-controlled OIDC/PostgreSQL environment.
 - [ ] P7-09 Verified real IdP session lifecycle, SCIM, fine-grained security team
   role/approval policies and safe user-facing enterprise login.
+  **SCIM and the approval policies are now implemented (2026-10-20):** the
+  SCIM 2.0 Users and Groups endpoints with the SCIM content type, list
+  envelope and error schema, filtering and pagination; `externalId` mapped to
+  the IdP subject; DELETE **deactivates** rather than deletes, because
+  deleting an audit-bearing membership would orphan the history that
+  references it; the endpoint is authenticated with a dedicated bearer token
+  compared in constant time and works in local demo mode **without** widening
+  the demo bypass for ordinary user routes; it is scoped to one organization.
+  A role is only ever taken from an allowlist (`admin` needs an explicit
+  opt-in), SCIM groups grant nothing unless an operator configures a
+  group-to-role map, and a provisioned user can never raise their own role.
+  The approval policy may **tighten** the defaults but never loosen a hard
+  rule: the rules-engine gates are not in the schema at all, and the
+  separation-of-duties booleans are hard values a request cannot change; a
+  policy change is audited and invalidates the approvals it affected.
+  **Still open:** a real IdP session lifecycle, MFA, and a safe user-facing
+  enterprise browser login.
 - [ ] P7-10 Accessibility and localization evaluation, richer collaboration
   UX, secure evidence attachments, external notification delivery and PDF/Excel.
+  **Accessibility, localization, attachments and external notification delivery
+  are now implemented (2026-10-20):** an axe-core evaluation of the RENDERED
+  DOM across every tab and both sidebar views, in the light and dark themes,
+  took 108 affected nodes to **0**; a dependency-free localization layer with
+  English and Bokmål catalogues, locale-aware number/currency/date formatting
+  that keeps money exact (`Decimal.quantize`, never a float), and a
+  byte-identical English report; enterprise-safe evidence attachments stored
+  outside the web root under a server-generated opaque name, with the size
+  ceiling enforced while streaming and traversal-tested against eleven hostile
+  filenames; and external notification delivery over a signed webhook and a
+  file outbox, with no person identifier in the payload and full SSRF
+  controls. **Still open:** richer collaboration UX, and PDF/Excel export —
+  the latter is deliberately deferred, see ADR-0013.
 - [ ] P7-11 Legal and operational release signoff (Phase 6 gate still OPEN).
 
 **Status:** Phase 7 experience APIs and UI source are implemented; independent
@@ -612,25 +642,48 @@ to boot.
   rather than calibrating against expert judgement. The machinery for a
   future version bump is in place.
 
-### Still open
-
-- [ ] P9-06 Close the outstanding Phase 5/6/7 identity, privacy, security,
-  recovery and independent production-release gates. This is the same work as
-  P5-01…P5-07, P6-06…P6-09 and P7-08…P7-11; it is listed here only to make
-  clear that Phase 9 does not make production any closer.
-- [ ] P9-07 Calibrate `portfolio-v1` against real expert judgements. This
-  depends entirely on P8-09 and cannot be closed with synthetic labels.
-
 ### Also delivered alongside Phase 9
 
+- [x] P9-08 **Audit integrity and rollback detection.** The failure-recovery
+  drill restored a `pg_dump` backup over a live database and found that the
+  `fde.finalized` audit event was **silently lost**: the assessment reverted
+  from `finalized` to `in_review`, the API still answered 200, and nothing
+  said a decision record had disappeared. That is the most serious defect the
+  drill found, because the audit trail is the evidence base for the product's
+  central claim — *a human decided*. Now: a per-assessment hash chain in the
+  database makes an in-place alteration detectable, and a high-water mark held
+  **outside** the database — which is exactly what a restore cannot roll back —
+  makes a rollback detectable. `GET /assessments/{id}/audit/integrity` reports
+  the verdict and the audit history response carries
+  `X-Audit-Chain-Intact` and `X-Audit-Rollback-Detected`. The drill now
+  observes `integrity_rollback_detected = True` with a marked sequence of 9
+  against an actual sequence of 7. A second audit path in `app/ai/service.py`
+  was found writing rows directly and is now routed through the same gate, so
+  there is genuinely one audit path.
+- [x] P9-09 **Dependency-failure behaviour.** A stopped database made route
+  handlers answer 500 while the readiness probe answered 503; an unhandled
+  exception bypassed the request middleware so replies lost their
+  `X-Request-ID` and no request was logged; and with no connect or statement
+  timeout a silently partitioned database wedged requests until the pool was
+  exhausted. Now: a `SQLAlchemyError` answers 503 with `Retry-After` and says
+  the request was **not applied**; the middleware catches an unhandled
+  exception, logs it with its traceback and returns a 500 that still carries
+  every security header; and the engine sets connect, pool and (on
+  PostgreSQL) server-side statement timeouts, all configurable and clamped.
+  A dependency failure must never look like a successful write.
 - [x] Index and constraint hardening: the missing foreign-key index, three
   composite indexes for the hot tenant-scoped read paths, and a real
   database-level step-order uniqueness constraint. Measured on PostgreSQL:
   the assessment list query went from 1.012 ms with a top-N heapsort over
   5000 rows to 0.032 ms without one, and the inbox query from 0.807 ms to
   0.035 ms.
+- [ ] P9-07 Calibrate `portfolio-v1` against real expert judgements. This
+  depends entirely on P8-09 and cannot be closed with synthetic labels.
+
+### Also delivered alongside Phase 9
+
 - [x] A backend-parametrised test suite: the existing tests now genuinely
-  execute against PostgreSQL (**432 passed, 3278 statements executed**)
+  execute against PostgreSQL (**529 passed, 3278+ statements executed**)
   instead of silently running on SQLite, with a guard that fails the run if
   zero statements were executed.
 - [x] A local failure-recovery drill exercising crash mid-write, restore
@@ -646,3 +699,21 @@ to boot.
 **Status:** Phase 9 source delivered and verified locally. **NOT certified,
 launched, or approved for personal or regulated business data.** The
 production startup guard remains closed. No GitHub-hosted runners are used.
+
+The local failure-recovery drill is the sharpest instrument here. After the
+audit-integrity and dependency-failure work, a re-run reports **crash-mid-write,
+restore-into-running-service, dependency-failure and disk-full all PASS**, and
+states that *no scenario produced corrupting or misleading behaviour*. The one
+remaining finding is the underlying storage limitation, now stated accurately:
+the audit trail still lives in the same database as the data it describes, so
+anything that can roll the database back can roll the trail back — but the
+rollback is now **detected and reported** rather than silent, and a production
+deployment needs the mark in an external append-only sink.
+
+Three findings the drill reported earlier turned out to be defects **in the
+drill**, and were corrected: a hard-coded migration head that made it report
+"data was lost" whenever the schema did not match a stale constant, a
+case-sensitive header comparison that reported headers which were demonstrably
+present as missing, and an audit-history check that did not know about the
+rollback detection. Correcting a tool that reports false findings is as
+important as fixing the defects it found.
