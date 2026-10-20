@@ -38,6 +38,7 @@ from app.domain.persistence import (
     TaskPatch,
     WorkflowCreate,
 )
+from app.domain.portfolio import ProvenanceView
 from app.domain.schemas import (
     Answer,
     AssessmentPreviewRequest,
@@ -50,6 +51,7 @@ from app.security import current_principal, require_reviewer_or_local_demo, requ
 from app.services.approval_chain import require_completed_approvals
 from app.services.assessment import analyze
 from app.services.discovery import summarize_discovery
+from app.services.provenance import capture_provenance, provenance_view, record_provenance
 
 router = APIRouter(prefix="/api/v1", tags=["assessments"])
 
@@ -671,6 +673,10 @@ def final_decision(
         review_id=review.id,
         identity_unverified=principal.demo,
     )
+    db.flush()  # keep the ledger entry ordered after the finalization event
+    # Ledger the inputs this decision was taken against. Facts only: the entry
+    # never changes the category, the approval outcome or the decision itself.
+    record_provenance(db, row, capture_provenance(db, row, review, principal))
     db.commit()
     return StoredReview(
         id=review.id,
@@ -707,6 +713,17 @@ def change_reopen(row: AssessmentRow) -> None:
     row.status = "discovering"
     row.analysis_snapshot = None
     row.analysis_revision = None
+
+
+@router.get("/assessments/{assessment_id}/provenance", response_model=ProvenanceView | None)
+def decision_provenance(assessment_id: str, db: Session = Depends(get_db)):
+    """Read-only ledger of the inputs behind the finalized decision.
+
+    Tenant scoping, revision binding and staleness follow the existing portfolio
+    conventions. The ledger records facts; it is not an approval or a validation.
+    """
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    return provenance_view(db, row)
 
 
 @router.get("/assessments/{assessment_id}/audit", response_model=list[AuditEntry])

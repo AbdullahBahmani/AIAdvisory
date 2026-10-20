@@ -10,6 +10,7 @@ from app.api.assessments import detail, get_or_404, require_analysis
 from app.db.models import AssessmentRow
 from app.db.session import get_db
 from app.reporting.render import render_html, render_markdown
+from app.services.provenance import provenance_view
 
 router = APIRouter(prefix="/api/v1/assessments", tags=["reporting"])
 
@@ -36,6 +37,8 @@ def assessment_report(
         for run in getattr(assessment, "ai_runs", [])
     ]
     document = detail(assessment)
+    # The ledger states which inputs the final decision was taken against.
+    ledger = provenance_view(db, assessment)
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
@@ -49,9 +52,9 @@ def assessment_report(
             "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
             "form-action 'none'; frame-ancestors 'none'"
         )
-        return HTMLResponse(render_html(document, proposals), headers=headers)
+        return HTMLResponse(render_html(document, proposals, ledger), headers=headers)
     return PlainTextResponse(
-        render_markdown(document, proposals),
+        render_markdown(document, proposals, ledger),
         media_type="text/markdown; charset=utf-8",
         headers=headers,
     )

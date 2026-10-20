@@ -80,6 +80,79 @@ class ValueScenarioView(ValueScenarioIn):
     advisory_only: bool = True
 
 
+PROVENANCE_SCHEMA_VERSION = "provenance-v1"
+
+ProvenanceStaleReason = Literal[
+    "analysis_changed",
+    "analysis_revision_changed",
+    "evidence_changed",
+    "evidence_added",
+    "value_scenario_changed",
+    "value_scenario_added",
+    "policy_version_changed",
+]
+
+PROVENANCE_NOTE = (
+    "Records the inputs the system presented when the decision was finalized. "
+    "It is not proof that the decision was correct, and it is neither an approval "
+    "nor a validation of the decision."
+)
+
+
+class AiProposalVersion(BaseModel):
+    """Prompt and schema versions of an optional, advisory AI proposal.
+
+    An AI proposal never feeds the deterministic analysis; its presence in the
+    ledger states that a proposal existed, not that it was correct or accepted.
+    """
+
+    feature: str
+    provider: str
+    model: str
+    prompt_version: str
+    schema_version: str
+
+
+class ProvenanceSnapshot(BaseModel):
+    """Immutable record of the inputs behind one finalized human decision.
+
+    The snapshot states what the system knew at decision time. It never changes a
+    recommendation category, an approval outcome or the human finalization gate.
+    """
+
+    schema_version: str = PROVENANCE_SCHEMA_VERSION
+    policy_version: str
+    scoring_weight_version: str
+    analysis_revision: int
+    assessment_revision: int
+    analysis_digest: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    verified_evidence_ids: list[str] = Field(default_factory=list)
+    value_scenario_id: str | None = None
+    value_scenario_ids: list[str] = Field(default_factory=list)
+    reviewer_subject: str
+    reviewer_identity_verified: bool = False
+    decision_maker_subject: str
+    decision_maker_identity_verified: bool = False
+    ai_contributed: bool = False
+    ai_proposals: list[AiProposalVersion] = Field(default_factory=list)
+    recorded_at: datetime
+
+
+class ProvenanceView(ProvenanceSnapshot):
+    """A stored ledger entry together with the drift state of its basis.
+
+    ``stale`` mirrors the ``stale`` convention of the Phase 8 portfolio views: the
+    recorded basis is no longer the current basis of the assessment.
+    """
+
+    assessment_id: str
+    stale: bool = False
+    stale_reasons: list[ProvenanceStaleReason] = Field(default_factory=list)
+    advisory_only: bool = True
+    note: str = PROVENANCE_NOTE
+
+
 class PocPlanIn(BaseModel):
     kpi_name: str = Field(min_length=3, max_length=160)
     unit: str = Field(min_length=1, max_length=60)
