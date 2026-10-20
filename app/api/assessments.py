@@ -49,6 +49,7 @@ from app.security import current_principal, require_reviewer_or_local_demo, requ
 from app.services.approval_chain import require_completed_approvals
 from app.services.assessment import analyze
 from app.services.audit import audit
+from app.services.audit_chain import assess_integrity
 from app.services.discovery import summarize_discovery
 from app.services.provenance import capture_provenance, provenance_view, record_provenance
 
@@ -704,8 +705,15 @@ def decision_provenance(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/assessments/{assessment_id}/audit", response_model=list[AuditEntry])
-def audit_history(assessment_id: str, db: Session = Depends(get_db)):
+def audit_history(assessment_id: str, response: Response, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
+    events = sorted(row.audit_events, key=lambda a: a.sequence)
+    verdict = assess_integrity(events, assessment_id=row.id)
+    # A rollback (a restore, or rows removed) must never be silent. The body keeps its
+    # existing shape, so the finding is surfaced in the response headers as well as
+    # through the dedicated integrity endpoint below.
+    response.headers["X-Audit-Chain-Intact"] = "true" if verdict.chain_intact else "false"
+    response.headers["X-Audit-Rollback-Detected"] = "true" if verdict.rollback_detected else "false"
     return [
         AuditEntry(
             id=a.id,
@@ -713,6 +721,37 @@ def audit_history(assessment_id: str, db: Session = Depends(get_db)):
             actor=a.actor,
             details=a.details,
             created_at=a.created_at,
+            sequence=a.sequence,
         )
-        for a in row.audit_events
+        for a in events
     ]
+
+
+@router.get("/assessments/{assessment_id}/audit/integrity")
+def audit_integrity(assessment_id: str, db: Session = Depends(get_db)):
+    """Report whether this assessment's audit trail is intact.
+
+    Two failure modes are reported:
+
+    * **rollback detected** — the database holds fewer audit events than were previously
+      committed. A restore, a partial restore, or rows were deleted. This is the failure
+      mode that a restore causes silently, and it matters because the audit trail is the
+      evidence base for "a human decided".
+    * **chain not intact** — the events are present but their content no longer matches the
+      recorded hashes, so a row was altered in place.
+
+    The verdict is a *finding*, not an approval: it says nothing about whether a recorded
+    decision was correct.
+    """
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    events = sorted(row.audit_events, key=lambda a: a.sequence)
+    verdict = assess_integrity(events, assessment_id=row.id)
+    payload = verdict.as_dict()
+    payload["assessment_id"] = assessment_id
+    payload["advisory_only"] = True
+    payload["note"] = (
+        "Records whether the audit trail is internally consistent and whether it was "
+        "rolled back. It is not proof that a recorded decision was correct, and it is "
+        "neither an approval nor a validation."
+    )
+    return payload

@@ -28,5 +28,10 @@ htmlcov/
 # Generated local demo exports
 demo_out/
 
+# The audit high-water mark and the local evidence attachment store are local
+# runtime state, never source. The mark is deliberately OUTSIDE the database so
+# that a restore of the database cannot roll it back with it.
+.advisory/
+
 # Local evidence attachment store (never commit uploaded customer data)
 .advisory/

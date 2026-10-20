@@ -223,6 +223,10 @@ class ReviewRow(Base):
 
 class AuditRow(Base):
     __tablename__ = "audit_events"
+    __table_args__ = (
+        UniqueConstraint("assessment_id", "sequence", name="uq_audit_events_assessment_sequence"),
+    )
+
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     assessment_id: Mapped[str] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
@@ -234,6 +238,12 @@ class AuditRow(Base):
     )
     actor_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     details: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Per-assessment position in the tamper-evident audit chain, and the hash over
+    # this row's canonical content chained onto the previous row's hash. Together
+    # they make an in-place alteration detectable; the out-of-database high-water
+    # mark makes a rollback (a restore) detectable. See app/services/audit_chain.py.
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    chain_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     assessment: Mapped[AssessmentRow] = relationship(back_populates="audit_events")
 

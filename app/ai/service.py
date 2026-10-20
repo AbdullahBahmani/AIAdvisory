@@ -14,9 +14,9 @@ from app.ai.data_guard import assert_no_obvious_sensitive_data
 from app.ai.prompts import prompt_for
 from app.ai.provider import AIProvider, ProviderFailure
 from app.ai.schemas import PROMPT_VERSION, SCHEMA_VERSION, SCHEMAS, AIRequest, AIRunRecord, Feature
-from app.db.models import AIRunRow, AssessmentRow, AuditRow
+from app.db.models import AIRunRow, AssessmentRow
 from app.domain.schemas import Answer
-from app.security import current_principal
+from app.services.audit import audit
 from app.services.discovery import summarize_discovery
 
 MAX_CONTEXT_BYTES = 12000
@@ -267,18 +267,16 @@ def run_proposal(
     )
     db.add(run)
     db.flush()
-    db.add(
-        AuditRow(
-            assessment_id=row.id,
-            event_type="ai.proposal_generated",
-            actor=current_principal(db).subject,
-            details={
-                "run_id": run.id,
-                "feature": feature.value,
-                "revision": revision,
-                "prompt_version": PROMPT_VERSION,
-            },
-        )
+    # Routed through the shared audit gate so this event carries the same identity
+    # evidence and the same tamper-evident chain position as every other event.
+    audit(
+        db,
+        row,
+        "ai.proposal_generated",
+        run_id=run.id,
+        feature=feature.value,
+        revision=revision,
+        prompt_version=PROMPT_VERSION,
     )
     db.commit()
     return _run_out(run, revision)

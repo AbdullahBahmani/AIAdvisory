@@ -114,6 +114,7 @@ class AuditEntry(DomainModel):
     actor: str
     details: dict
     created_at: datetime
+    sequence: int = 0
 
 
 class AssessmentDetail(AssessmentCreate):
