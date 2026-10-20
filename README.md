@@ -308,8 +308,38 @@ Run migration `0007_collaboration` via `alembic upgrade head` before starting
 this version. See [Phase 7 guide](docs/phase7.md) and
 [ADR-0007](docs/decisions/0007-collaboration.md). Only a limited Streamlit
 experience is provided; enterprise browser SSO, SCIM, fine-grained approval
-policies, complete accessibility testing and external notification channels
-remain future work. Production release stays blocked.
+policies and complete accessibility testing remain future work. Production
+release stays blocked.
+
+
+## Phase 7 addendum — external notification delivery
+
+The in-app inbox can now be complemented by an **out-of-band** delivery: a
+notification is generated inside the application (an inbox row plus a queued
+delivery record) and delivered afterwards by a dispatcher that runs out of
+band, so a broken destination can never fail the request that produced the
+message and can never change an assessment, an approval or a decision.
+
+Two channels are available, both without a new project dependency: a **signed
+webhook** (HMAC-SHA256 over a minimal JSON payload that carries no
+assessment content, no rationale, no person and no secret) and an **on-disk
+outbox** an operator wires to their own mail infrastructure. Destinations are
+configured per organization by an operator command, deliveries are retried
+with bounded backoff under a stable idempotency key, and every outbound
+request is re-validated against the SSRF and egress rules (HTTPS, no
+link-local/private/metadata addresses, pinned address, same-origin redirects
+only, bounded timeouts and response size).
+
+```bash
+python -m scripts.notifications configure-destination \
+    --organization "Example Co" --channel webhook \
+    --target https://hooks.example.org/aiadvisory
+python -m scripts.notifications dispatch --organization "Example Co" --execute
+```
+
+Apply migration `0013_notification_delivery` before starting. See
+[docs/notifications.md](docs/notifications.md). A notification is a message
+about an event, never an event and never an authorization.
 
 
 ## Phase 8 — AI Opportunity Portfolio Intelligence (v0.8.0)

@@ -13,6 +13,11 @@ import app.db.provisioning_models  # noqa: F401,E402
 from app.db.models import Base
 from app.db.session import DATABASE_URL
 
+# The notification delivery tables are declared outside app/db/models.py, so
+# they have to be imported here for `alembic check` to compare the migrated
+# catalogue against the full model metadata.
+from app.notifications import models as _notification_models  # noqa: F401
+
 config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)

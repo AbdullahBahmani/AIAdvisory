@@ -13,6 +13,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.api.advisor import router as advisor_router
 from app.api.approval_policies import router as approval_policies_router
 from app.api.assessments import router as assessments_router
+from app.api.notifications import router as notifications_router
 from app.api.portfolio import router as portfolio_router
 from app.api.reports import router as reports_router
 from app.api.scim import router as scim_router
@@ -35,9 +36,12 @@ from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request,
 #: Schema revisions this build can serve. ``0008_portfolio`` is the previous
 #: head and stays supported; ``0009_local_attribution`` adds the local actor
 #: attribution columns; ``0010_index_and_constraint_hardening`` adds the
-#: tenant-path indexes and the step-order uniqueness constraint. ``0012`` adds
-#: the SCIM provisioning and approval-policy tables. All of them run the same
-#: application code, so any of these revisions is a healthy database.
+#: tenant-path indexes and the step-order uniqueness constraint;
+#: ``0011_audit_chain`` adds the tamper-evident audit chain columns;
+#: ``0012_scim_provisioning`` adds the SCIM provisioning and approval-policy
+#: tables; ``0013_notification_delivery`` adds the notification destinations
+#: and the queued outbound deliveries. All of them run the same application
+#: code, so every revision in this set is a healthy database.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
@@ -45,6 +49,7 @@ SUPPORTED_SCHEMA_REVISIONS = frozenset(
         "0010_index_and_constraint_hardening",
         "0011_audit_chain",
         "0012_scim_provisioning",
+        "0013_notification_delivery",
     }
 )
 
@@ -188,6 +193,8 @@ app.include_router(advisor_router, dependencies=[Depends(authenticate_request)])
 app.include_router(reports_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(workspace_router, dependencies=[Depends(authenticate_request)])
+
+app.include_router(notifications_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(portfolio_router, dependencies=[Depends(authenticate_request)])
 
