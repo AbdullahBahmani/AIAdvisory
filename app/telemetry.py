@@ -36,6 +36,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -212,7 +213,34 @@ def route_template(request: Request) -> str:
 async def instrument_request(request: Request, call_next):
     started = time.perf_counter()
     identifier = str(uuid4())
-    response: Response = await call_next(request)
+    try:
+        response: Response = await call_next(request)
+    except Exception:
+        # The failure-recovery drill found that an unhandled exception bypassed
+        # this middleware entirely: the reply carried no X-Request-ID, no
+        # nosniff and no Cache-Control, and no http.request line was written to
+        # the log. A reply that leaves the application without its security
+        # headers is worse than an ugly one, and a request that leaves no trace
+        # is worse than a failed one.
+        #
+        # The exception is logged with its traceback for the operator, and the
+        # client gets a clean 500 that still carries the standard headers. The
+        # exception is NOT swallowed silently: it is logged at error level.
+        elapsed = time.perf_counter() - started
+        logger.exception(
+            json.dumps(
+                {
+                    "event": "http.request",
+                    "request_id": identifier,
+                    "method": request.method,
+                    "route": route_template(request),
+                    "status": 500,
+                    "duration_ms": round(elapsed * 1000, 1),
+                    "outcome": "unhandled_exception",
+                }
+            )
+        )
+        response = JSONResponse(status_code=500, content={"detail": "Internal server error"})
     response.headers["X-Request-ID"] = identifier
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"

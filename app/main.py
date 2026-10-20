@@ -1,5 +1,7 @@
 """FastAPI public API. Phase 1 offers *stateless*, rules-only preview endpoints."""
 
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -52,6 +54,26 @@ app = FastAPI(
 async def stale_write_conflict(_request, _exc):
     return JSONResponse(
         status_code=409, content={"detail": "Assessment changed concurrently; reload and retry"}
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_unavailable(_request, exc):
+    """A database that cannot answer is a 503, not a 500.
+
+    The failure-recovery drill found that a stopped database made route handlers
+    answer ``500 Internal Server Error``, while the readiness probe and the rate
+    limiter correctly answered 503. A 500 tells the caller the application is
+    broken; a 503 tells them the dependency is unavailable and the request may be
+    retried. The distinction matters operationally: a dependency outage must not
+    look like an application defect, and must not look like a successful write.
+    """
+    logger = logging.getLogger("aiadvisory.database")
+    logger.warning('{"event": "database.unavailable", "error": "%s"}', type(exc).__name__)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database unavailable; the request was not applied"},
+        headers={"Retry-After": "5"},
     )
 
 
