@@ -29,6 +29,7 @@
 
 - All HTTP replies set a request ID, no-store, nosniff, no-referrer, deny-framing. Local log lines record **only route template, method, status, request ID and elapsed milliseconds**; they exclude query strings, request bodies, response bodies and tokens.
 - Monitor 401/403, 5xx, DB latency, model-call failure/budget, unusual edits, export volume, review overrides, backups and space usage through a privately configured observability stack. No external logs connector is configured yet.
+- **Provider spend is visible through a local read-only command**, `python -m scripts.spend_report` (see "Local provider-spend reporting" below). There is still **no alerting, threshold or dashboard**: nobody is notified when spend changes, so the operator has to run the command and read it.
 - Operate behind a TLS termination proxy with request/body size limits, distributed rate limiting, security scanning and outbound provider allowlisting. There is **no implemented distributed rate limiter**; this is a production blocker. Keep API/UI loopback-bound for local demo.
 - Incident: stop API/public ingress, revoke compromised credential IDs via CLI, rotate any leaked AI/DB keys, preserve audit events, inspect request IDs and relevant tenant scopes, and restore from verified backups if needed.
 
@@ -39,7 +40,7 @@
 - [ ] PostgreSQL deployment, concurrency, migrations, backup and restore drill — *local drill done 2026-10-19, production drill still OPEN*
 - [ ] Data processing agreements, residency/retention consent, redaction/DLP and deletion runbook
 - [ ] TLS ingress, distributed request limiting, CSRF/session review for browser deployment
-- [ ] Secret lifecycle and key rotation, dependency/audit scanner, penetration test
+- [ ] Secret lifecycle and key rotation, dependency/audit scanner, penetration test (*a local dependency scan of the committed lock file now exists — see "Local dependency vulnerability scan" below; the hosted/CI scan, image scanning, SBOM and pen test remain OPEN*)
 - [ ] Full merged Phase 3+4+5 test suite, browser and container runtime smoke, Ruff/lint, dependency lock
 - [ ] Approved rollback and incident response owners
 
@@ -222,3 +223,97 @@ Operational notes for a real pilot, raised by the drill and still open:
   data) are **not** an RPO/RTO figure. Production needs encrypted off-site
   backups, point-in-time recovery, a written retention/deletion policy and an
   independent restore rehearsal at realistic volume.
+
+## Local provider-spend reporting (operator command)
+
+`python -m scripts.spend_report` is a **local, offline, read-only** report over
+the AI cost and token usage already stored in `ai_runs`. It is documented in
+full in `docs/spend.md`.
+
+```bash
+# one tenant (default shape)
+DATABASE_URL=sqlite:///./aiadvisory.sqlite3 \
+  python -m scripts.spend_report --organization "Example Co"
+
+# explicit cross-tenant view
+python -m scripts.spend_report --all-tenants
+
+# a period, a grouping, machine-readable output
+python -m scripts.spend_report --organization "Example Co" \
+    --since 30d --group-by day --format json
+```
+
+Operator rules:
+
+- **Scope is always explicit.** `--organization NAME_OR_UUID` scopes the report
+  to one tenant; `--all-tenants` is the only way to read across tenants and has
+  to be asked for. Passing both, or neither, is an error.
+- **Unknown cost stays unknown.** Cost is stored only when the operator
+  supplied `ADVISORY_AI_INPUT_USD_PER_MILLION`,
+  `ADVISORY_AI_OUTPUT_USD_PER_MILLION` and `ADVISORY_AI_PRICING_SOURCE` on the
+  API host at request time. Runs without those have **no** cost. The report
+  counts them as unpriced (or malformed), keeps them in the run count, and
+  never estimates a price for them. A group with no priced run shows `-`, not
+  `0.000000`.
+- **The number is a local estimate, not a bill.** It is the sum of the prices
+  the operator supplied, over the runs that recorded one. It is not a
+  reconciliation against provider invoices and must not be used as one.
+- To make more runs priced, configure the three `ADVISORY_AI_*` pricing
+  variables on the API host (see `.env.example`) — the tool itself never
+  applies a price.
+- The command only issues `SELECT` statements, and marks the transaction
+  `READ ONLY` on PostgreSQL.
+
+What this does **not** give you: alerting, thresholds, dashboards, a scheduled
+job or an invoice reconciliation. Provider-spend monitoring in this repository
+is a command an operator runs by hand.
+
+## Local dependency vulnerability scan (operator command)
+
+There are no GitHub-hosted runners for this repository, so the dependency scan
+is a **local command** an operator runs. It adds no project dependency:
+`uv audit` ships with `uv`, and the second scanner runs through `uvx`.
+
+```bash
+# 1) scan the committed lock file (OSV advisories); --locked asserts uv.lock
+#    is current, so the audited set is the locked set, not a fresh resolve
+uv audit --locked
+
+# machine-readable
+uv audit --locked --output-format json
+
+# 2) independent second scanner, hash-checked, via uvx (no project dependency)
+uv export --frozen --all-extras --no-emit-project --format requirements-txt -o /tmp/req-locked.txt
+uvx pip-audit -r /tmp/req-locked.txt --require-hashes -f columns        # PyPI service
+uvx pip-audit -r /tmp/req-locked.txt --require-hashes -s osv -f columns  # OSV service
+```
+
+Both commands exit non-zero when an advisory is found. The result of the run
+performed on 2026-10-20 for the committed lock file was **no known
+vulnerabilities** in the 59 audited packages (see
+`docs/release-verification.md` for the verbatim output and for the control run
+that proves the tooling does report advisories). No dependency version was
+changed, because no advisory was found.
+
+Operator rules and caveats:
+
+- **Re-run it.** Nothing runs it automatically and there is no CI job, so a
+  newly published advisory stays invisible until an operator runs the command
+  again. Treat it as a manual gate before each release, and record the output.
+- It needs network access to the OSV/PyPI advisory service. Without network it
+  cannot run — report that as **not run**, never as "0 vulnerabilities".
+- `uv audit` is an experimental `uv` command and prints a warning on every run.
+- The result is a point-in-time snapshot of the advisory data, not a
+  subscription or a guarantee.
+- Only the **Python** dependency set is covered. Container images, the base OS
+  and front-end assets are **not** scanned, and no SBOM is produced or signed.
+- The scan covers the lock file. If `pyproject.toml` and `uv.lock` ever
+  disagree, `uv audit --locked` fails loudly instead of auditing something
+  else — that failure is the correct behaviour.
+- Do not "fix" a finding by bumping a version without regenerating the lock
+  file (`uv lock`) and re-running the scan; and do not suppress an advisory
+  with `--ignore` without a written, reviewed rationale.
+
+The hosted/CI dependency scan, container image scanning, SBOM signing,
+vulnerability-based alerting and the independent penetration test all remain
+**OPEN** release gates.
