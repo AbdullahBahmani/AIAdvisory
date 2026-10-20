@@ -3,18 +3,31 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+from fastapi import HTTPException
 from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
+    event,
 )
+from sqlalchemy.engine import Dialect
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+#: Name of the database-level step-order uniqueness constraint.
+STEP_ORDER_CONSTRAINT = "uq_workflow_steps_workflow_position"
+
+#: Message the API returns when a step order is already used in its workflow.
+#: It is intentionally identical to the friendly pre-check in
+#: ``app/api/assessments.py`` so both paths answer with the same 409.
+STEP_ORDER_CONFLICT_DETAIL = "Step order already used in this workflow"
 
 
 def new_id() -> str:
@@ -25,12 +38,54 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _is_step_order_violation(error: BaseException) -> bool:
+    """True when ``error`` is the step-order uniqueness violation.
+
+    PostgreSQL names the constraint in the driver error, SQLite reports the
+    offending columns instead.
+    """
+    text = str(error)
+    if STEP_ORDER_CONSTRAINT in text:
+        return True
+    return "workflow_steps.workflow_id" in text and "workflow_steps.position" in text
+
+
+@event.listens_for(Dialect, "handle_error")
+def _translate_step_order_violation(context) -> None:
+    """Answer a lost step-order race with 409 instead of a raw IntegrityError.
+
+    The API validates the step order before writing, so this only fires when a
+    concurrent writer wins the race and the database rejects the duplicate. The
+    client gets the same friendly 4xx message as the pre-check; no constraint
+    name, SQL statement or parameter value is leaked to the caller.
+    """
+    original = context.original_exception
+    sql_error = context.sqlalchemy_exception
+    if not isinstance(original, IntegrityError) and not isinstance(sql_error, IntegrityError):
+        return None
+    # ``original`` is the driver error; the SQLAlchemy wrapper keeps it in ``orig``.
+    driver_error = getattr(original, "orig", None) or original
+    if not _is_step_order_violation(driver_error):
+        return None
+    return HTTPException(status_code=409, detail=STEP_ORDER_CONFLICT_DETAIL)
+
+
 class Base(DeclarativeBase):
     pass
 
 
 class AssessmentRow(Base):
     __tablename__ = "assessments"
+    # Tenant-scoped listing order (`GET /api/v1/assessments`,
+    # `GET /api/v1/portfolio/opportunities`): filter organization_id, order by
+    # created_at. The composite index removes the top-N heapsort.
+    __table_args__ = (
+        Index(
+            "ix_assessments_organization_id_created_at",
+            "organization_id",
+            "created_at",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str | None] = mapped_column(
@@ -87,6 +142,9 @@ class WorkflowRow(Base):
 
 class StepRow(Base):
     __tablename__ = "workflow_steps"
+    # Step order is unique per workflow. The application validates this before
+    # writing; the database enforces it so concurrent writers cannot both win.
+    __table_args__ = (UniqueConstraint("workflow_id", "position", name=STEP_ORDER_CONSTRAINT),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     workflow_id: Mapped[str] = mapped_column(
         ForeignKey("workflows.id", ondelete="CASCADE"), index=True
@@ -125,7 +183,7 @@ class AnswerRow(Base):
     assessment_id: Mapped[str] = mapped_column(
         ForeignKey("assessments.id", ondelete="CASCADE"), index=True
     )
-    key: Mapped[str] = mapped_column(String(120), index=True)
+    key: Mapped[str] = mapped_column(String(120))
     value: Mapped[dict] = mapped_column(JSON)
     kind: Mapped[str] = mapped_column(String(24))
     source: Mapped[str | None] = mapped_column(String(200))
@@ -178,6 +236,10 @@ class OrganizationRow(Base):
 
 class ApiCredentialRow(Base):
     __tablename__ = "api_credentials"
+    # Membership lookup on the request path: organization_id + subject.
+    __table_args__ = (
+        Index("ix_api_credentials_organization_id_subject", "organization_id", "subject"),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
@@ -222,6 +284,8 @@ class OidcMembershipRow(Base):
         UniqueConstraint(
             "issuer", "subject", "organization_id", name="uq_oidc_member_identity_org"
         ),
+        # Membership lookup on the request path: organization_id + subject.
+        Index("ix_oidc_memberships_organization_id_subject", "organization_id", "subject"),
     )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     issuer: Mapped[str] = mapped_column(String(400), nullable=False)
@@ -288,12 +352,21 @@ class ApprovalRow(Base):
 
 class InboxNotificationRow(Base):
     __tablename__ = "inbox_notifications"
+    # Inbox listing: organization_id + recipient, ordered by created_at.
+    __table_args__ = (
+        Index(
+            "ix_inbox_notifications_organization_id_recipient_created_at",
+            "organization_id",
+            "recipient",
+            "created_at",
+        ),
+    )
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     organization_id: Mapped[str] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
     )
     assessment_id: Mapped[str] = mapped_column(
-        ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True
     )
     recipient: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)

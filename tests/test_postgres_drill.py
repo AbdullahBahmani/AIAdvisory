@@ -37,7 +37,8 @@ from sqlalchemy.orm.exc import StaleDataError
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DRILL_SCHEMA = "aiadvisory_pg_drill"
 DOWNGRADE_SCHEMA = "aiadvisory_pg_drill_downgrade"
-HEAD_REVISION = "0008_portfolio"
+HEAD_REVISION = "0010_index_and_constraint_hardening"
+STEP_ORDER_CONSTRAINT = "uq_workflow_steps_workflow_position"
 
 
 def _configured_pg_url() -> str | None:
@@ -270,26 +271,33 @@ def test_expected_indexes_exist_in_the_postgres_catalogue(pg_drill):
     present = set(rows)
     expected = {
         "ix_assessments_organization_id",
+        "ix_assessments_organization_id_created_at",
         "ix_workflows_assessment_id",
         "ix_workflow_steps_workflow_id",
         "ix_tasks_step_id",
         "ix_answers_assessment_id",
-        "ix_answers_key",
         "ix_reviews_assessment_id",
         "ix_audit_events_assessment_id",
         "ix_ai_runs_assessment_id",
         "ix_api_credentials_organization_id",
+        "ix_api_credentials_organization_id_subject",
         "ix_oidc_memberships_organization_id",
+        "ix_oidc_memberships_organization_id_subject",
         "ix_assessment_comments_assessment_id",
         "ix_approval_votes_assessment_id",
         "ix_inbox_notifications_organization_id",
+        "ix_inbox_notifications_organization_id_recipient_created_at",
         "ix_inbox_notifications_recipient",
+        "ix_inbox_notifications_assessment_id",
         "ix_opportunity_evidence_assessment_id",
         "ix_value_scenarios_assessment_id",
         "ix_poc_plans_assessment_id",
         "ix_poc_observations_poc_id",
     }
     assert expected <= present, sorted(expected - present)
+    # The unused answers.key index was dropped in 0010: no application query
+    # filters answers by key.
+    assert "ix_answers_key" not in present
 
 
 def test_expected_unique_constraints_and_foreign_keys_exist(pg_drill):
@@ -309,6 +317,14 @@ def test_expected_unique_constraints_and_foreign_keys_exist(pg_drill):
         "UNIQUE (token_hash)",
     ):
         assert any(expected in definition for definition in definitions), expected
+    # PostgreSQL quotes the reserved word "position" in the definition.
+    step_order = [
+        definition
+        for name, contype, definition in constraints
+        if name == STEP_ORDER_CONSTRAINT and contype == "u"
+    ]
+    assert step_order, "the step order uniqueness constraint is missing"
+    assert "workflow_id" in step_order[0] and "position" in step_order[0], step_order
     # Tenant isolation is enforced by the database, not only by application code.
     assert any(
         "FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT" in d
@@ -403,26 +419,15 @@ def _fk_index_coverage(engine, schema: str) -> list[tuple[str, str, str]]:
 def test_every_foreign_key_has_a_supporting_index(pg_drill):
     """PostgreSQL does not index foreign keys automatically; check we do.
 
-    ``inbox_notifications.assessment_id`` is a recorded, accepted gap for P5-03:
-    the column has no index, so a parent assessment delete must scan the
-    notification table. The gap is listed explicitly so that a *new* unindexed
-    foreign key fails this test.
+    The ``inbox_notifications.assessment_id`` gap recorded for P5-03 is closed
+    in 0010, so no foreign key may be left without a supporting index.
     """
-    accepted_gaps = {"inbox_notifications_assessment_id_fkey"}
     unindexed = _fk_index_coverage(pg_drill.engine, pg_drill.schema)
-    found = {name for name, _table, _column in unindexed}
-    assert found <= accepted_gaps, f"unindexed foreign keys: {sorted(found - accepted_gaps)}"
+    assert unindexed == [], f"unindexed foreign keys: {unindexed}"
 
 
-def test_tenant_list_ordering_has_no_index_backed_sort(pg_drill):
-    """Documents the known gap: no composite (organization_id, created_at) index.
-
-    ``GET /api/v1/assessments`` and ``GET /api/v1/portfolio/opportunities`` order
-    by ``created_at DESC`` inside one tenant. Only ``ix_assessments_organization_id``
-    exists, so PostgreSQL filters through the index and then sorts the tenant's
-    rows in memory (top-N heapsort). This test fails on purpose once a
-    composite index is added, so the schema change is reviewed.
-    """
+def _seed_two_tenants(pg_drill, mine: int = 5000, other_count: int = 20000):
+    """Create two tenants: one small, one large, so the planner has a choice."""
     from app.db.models import AssessmentRow, OrganizationRow
 
     with Session(pg_drill.engine) as db:
@@ -435,14 +440,34 @@ def test_tenant_list_ordering_has_no_index_backed_sort(pg_drill):
         db.add_all(
             [
                 AssessmentRow(title=f"mine {i}", organization_id=org_id, status="draft")
-                for i in range(50)
+                for i in range(mine)
             ]
             + [
                 AssessmentRow(title=f"other {i}", organization_id=other_id, status="draft")
-                for i in range(20000)
+                for i in range(other_count)
             ]
         )
         db.commit()
+    return org_id, other_id
+
+
+def _drop_two_tenants(pg_drill, org_ids) -> None:
+    from app.db.models import AssessmentRow, OrganizationRow
+
+    with Session(pg_drill.engine) as db:
+        db.query(AssessmentRow).filter(AssessmentRow.organization_id.in_(org_ids)).delete()
+        db.query(OrganizationRow).filter(OrganizationRow.id.in_(org_ids)).delete()
+        db.commit()
+
+
+def test_tenant_list_ordering_uses_the_composite_index(pg_drill):
+    """The tenant listing is served by the (organization_id, created_at) index.
+
+    Before 0010 the planner filtered through ``ix_assessments_organization_id``
+    and sorted the tenant's rows with a top-N heapsort on every request. The
+    composite index makes the sort disappear.
+    """
+    org_id, other_id = _seed_two_tenants(pg_drill)
     try:
         with pg_drill.engine.connect() as conn:
             conn.execute(text("analyze assessments"))
@@ -459,14 +484,271 @@ def test_tenant_list_ordering_has_no_index_backed_sort(pg_drill):
                 .all()
             )
         rendered = "\n".join(plan)
-        assert "Sort" in rendered, rendered
+        assert "ix_assessments_organization_id_created_at" in rendered, rendered
+        assert "Sort" not in rendered, rendered
+    finally:
+        _drop_two_tenants(pg_drill, [org_id, other_id])
+
+
+def test_portfolio_listing_no_longer_sorts_the_whole_tenant(pg_drill):
+    """The portfolio listing keeps its ``id`` tie-break without a full sort."""
+    org_id, other_id = _seed_two_tenants(pg_drill)
+    try:
+        with pg_drill.engine.connect() as conn:
+            conn.execute(text("analyze assessments"))
+            plan = (
+                conn.execute(
+                    text(
+                        "explain (analyze) select id from assessments "
+                        "where status != 'deleted' and organization_id = :org "
+                        "order by created_at desc, id limit 100"
+                    ),
+                    {"org": org_id},
+                )
+                .scalars()
+                .all()
+            )
+        rendered = "\n".join(plan)
+        assert "ix_assessments_organization_id_created_at" in rendered, rendered
+        # The rows arrive already ordered by created_at; only the tie-break
+        # groups are sorted, never the whole tenant.
+        assert "top-N heapsort" not in rendered, rendered
+    finally:
+        _drop_two_tenants(pg_drill, [org_id, other_id])
+
+
+def test_inbox_listing_uses_the_composite_index(pg_drill):
+    """The in-app inbox is served by (organization_id, recipient, created_at)."""
+    from app.db.models import AssessmentRow, InboxNotificationRow, OrganizationRow
+
+    with Session(pg_drill.engine) as db:
+        organization = OrganizationRow(name="drill-inbox-org")
+        other = OrganizationRow(name="drill-inbox-org-other")
+        db.add_all([organization, other])
+        db.flush()
+        org_id = organization.id
+        other_id = other.id
+        assessment = AssessmentRow(title="inbox target", organization_id=org_id)
+        db.add(assessment)
+        db.flush()
+        assessment_id = assessment.id
+        mine = [
+            InboxNotificationRow(
+                organization_id=org_id,
+                assessment_id=assessment_id,
+                recipient="drill-analyst",
+                event_type="reviewer.assigned",
+                message="assigned",
+            )
+            for _ in range(50)
+        ]
+        theirs = [
+            InboxNotificationRow(
+                organization_id=other_id,
+                assessment_id=assessment_id,
+                recipient=f"other-{i}",
+                event_type="reviewer.assigned",
+                message="assigned",
+            )
+            for i in range(20000)
+        ]
+        db.add_all(mine + theirs)
+        db.commit()
+    try:
+        with pg_drill.engine.connect() as conn:
+            conn.execute(text("analyze inbox_notifications"))
+            plan = (
+                conn.execute(
+                    text(
+                        "explain (analyze) select id from inbox_notifications "
+                        "where organization_id = :org and recipient = :subject "
+                        "order by created_at desc limit 100"
+                    ),
+                    {"org": org_id, "subject": "drill-analyst"},
+                )
+                .scalars()
+                .all()
+            )
+        rendered = "\n".join(plan)
+        assert "ix_inbox_notifications_organization_id_recipient_created_at" in rendered, rendered
+        assert "Sort" not in rendered, rendered
+        assert "Rows Removed by Filter" not in rendered, rendered
     finally:
         with Session(pg_drill.engine) as db:
-            db.query(AssessmentRow).filter(
-                AssessmentRow.organization_id.in_([org_id, other_id])
+            db.query(InboxNotificationRow).filter(
+                InboxNotificationRow.organization_id.in_([org_id, other_id])
+            ).delete()
+            db.query(AssessmentRow).filter(AssessmentRow.id == assessment_id).delete()
+            db.query(OrganizationRow).filter(OrganizationRow.id.in_([org_id, other_id])).delete()
+            db.commit()
+
+
+def test_membership_lookup_uses_the_composite_index(pg_drill):
+    """Membership lookups filter organization_id + subject, not organization_id alone."""
+    from app.db.models import OidcMembershipRow, OrganizationRow
+
+    with Session(pg_drill.engine) as db:
+        organization = OrganizationRow(name="drill-membership-org")
+        other = OrganizationRow(name="drill-membership-org-other")
+        db.add_all([organization, other])
+        db.flush()
+        org_id = organization.id
+        other_id = other.id
+        db.add_all(
+            [
+                OidcMembershipRow(
+                    issuer="https://drill.example",
+                    subject="drill-analyst",
+                    organization_id=org_id,
+                    role="reviewer",
+                    active=True,
+                )
+            ]
+            + [
+                OidcMembershipRow(
+                    issuer="https://drill.example",
+                    subject=f"colleague-{i}",
+                    organization_id=org_id,
+                    role="reviewer",
+                    active=True,
+                )
+                for i in range(2000)
+            ]
+        )
+        db.commit()
+    try:
+        with pg_drill.engine.connect() as conn:
+            conn.execute(text("analyze oidc_memberships"))
+            plan = (
+                conn.execute(
+                    text(
+                        "explain (analyze) select id from oidc_memberships "
+                        "where organization_id = :org and subject = :subject "
+                        "and active is true"
+                    ),
+                    {"org": org_id, "subject": "drill-analyst"},
+                )
+                .scalars()
+                .all()
+            )
+        rendered = "\n".join(plan)
+        assert "ix_oidc_memberships_organization_id_subject" in rendered, rendered
+        assert "Rows Removed by Filter" not in rendered, rendered
+    finally:
+        with Session(pg_drill.engine) as db:
+            db.query(OidcMembershipRow).filter(
+                OidcMembershipRow.organization_id.in_([org_id, other_id])
             ).delete()
             db.query(OrganizationRow).filter(OrganizationRow.id.in_([org_id, other_id])).delete()
             db.commit()
+
+
+# --------------------------------------------------------------------------
+# 2b. Step order uniqueness is enforced by the database
+# --------------------------------------------------------------------------
+
+
+def _workflow_with_step(pg_drill, position: int = 1):
+    from app.db.models import AssessmentRow, StepRow, WorkflowRow
+
+    with Session(pg_drill.engine) as db:
+        assessment = AssessmentRow(title="step order target")
+        db.add(assessment)
+        db.flush()
+        workflow = WorkflowRow(assessment_id=assessment.id, name="step order workflow")
+        db.add(workflow)
+        db.flush()
+        step = StepRow(workflow_id=workflow.id, name="first", position=position)
+        db.add(step)
+        db.commit()
+        return assessment.id, workflow.id, step.id
+
+
+def _drop_workflow(pg_drill, assessment_id: str) -> None:
+    from app.db.models import AssessmentRow
+
+    with Session(pg_drill.engine) as db:
+        db.query(AssessmentRow).filter(AssessmentRow.id == assessment_id).delete()
+        db.commit()
+
+
+def test_database_rejects_a_duplicate_step_order(pg_drill):
+    """The uniqueness constraint really holds: a duplicate insert is refused.
+
+    The driver-level error is observed with ``skip_user_error_events`` so the
+    application's friendly translation does not hide the database refusal.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    assessment_id, workflow_id, _step_id = _workflow_with_step(pg_drill)
+    try:
+        with pg_drill.engine.connect().execution_options(skip_user_error_events=True) as conn:
+            with pytest.raises(IntegrityError) as excinfo:
+                conn.execute(
+                    text(
+                        "insert into workflow_steps (id, workflow_id, name, position) "
+                        "values (gen_random_uuid(), :workflow, 'duplicate', 1)"
+                    ),
+                    {"workflow": workflow_id},
+                )
+        assert STEP_ORDER_CONSTRAINT in str(excinfo.value), str(excinfo.value)
+    finally:
+        _drop_workflow(pg_drill, assessment_id)
+
+
+def test_duplicate_step_order_is_reported_as_a_friendly_conflict(pg_drill):
+    """The database violation becomes the friendly 409, never a raw 500.
+
+    The application pre-check rejects an obvious duplicate before the write;
+    this test bypasses it, so only the database constraint can reject the row.
+    """
+    from fastapi import HTTPException
+
+    from app.db.models import StepRow
+
+    assessment_id, workflow_id, _step_id = _workflow_with_step(pg_drill)
+    try:
+        with Session(pg_drill.engine) as db:
+            db.add(StepRow(workflow_id=workflow_id, name="duplicate", position=1))
+            with pytest.raises(HTTPException) as excinfo:
+                db.commit()
+        assert excinfo.value.status_code == 409
+        assert excinfo.value.detail == "Step order already used in this workflow"
+        # No internals leak into the client-visible message.
+        assert STEP_ORDER_CONSTRAINT not in excinfo.value.detail
+    finally:
+        _drop_workflow(pg_drill, assessment_id)
+
+
+def test_api_rejects_a_duplicate_step_order_with_409(pg_drill, api_client, api_principal):
+    """The public API answers a duplicate step order with the same 409 message."""
+    assessment = _create_assessment(api_client, api_principal.headers)
+    url = f"/api/v1/assessments/{assessment['id']}"
+
+    def revision() -> str:
+        return api_client.get(url, headers=api_principal.headers).json()["revision"]
+
+    workflow = api_client.post(
+        f"{url}/workflows",
+        json={"name": "Drill workflow"},
+        headers={**api_principal.headers, "If-Match": f'"{revision()}"'},
+    )
+    assert workflow.status_code == 201, workflow.text
+    workflow_id = workflow.json()["id"]
+    first = api_client.post(
+        f"/api/v1/workflows/{workflow_id}/steps",
+        json={"name": "First", "order": 3},
+        headers={**api_principal.headers, "If-Match": f'"{revision()}"'},
+    )
+    assert first.status_code == 201, first.text
+    duplicate = api_client.post(
+        f"/api/v1/workflows/{workflow_id}/steps",
+        json={"name": "Duplicate", "order": 3},
+        headers={**api_principal.headers, "If-Match": f'"{revision()}"'},
+    )
+    assert duplicate.status_code == 409, duplicate.text
+    assert duplicate.json()["detail"] == "Step order already used in this workflow"
+    assert STEP_ORDER_CONSTRAINT not in duplicate.text
 
 
 # --------------------------------------------------------------------------
