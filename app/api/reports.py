@@ -2,13 +2,14 @@
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from app.api.assessments import detail, get_or_404, require_analysis
 from app.db.models import AssessmentRow
 from app.db.session import get_db
+from app.localization import DEFAULT_LOCALE, LOCALES, Translator
 from app.reporting.render import render_html, render_markdown
 from app.services.provenance import provenance_view
 
@@ -19,8 +20,11 @@ router = APIRouter(prefix="/api/v1/assessments", tags=["reporting"])
 def assessment_report(
     assessment_id: str,
     format: Literal["markdown", "html"] = Query(default="markdown"),
+    locale: str = Query(default=DEFAULT_LOCALE),
     db: Session = Depends(get_db),
 ):
+    if locale not in LOCALES:
+        raise HTTPException(status_code=422, detail=f"Unsupported locale: {locale}")
     assessment = get_or_404(db, AssessmentRow, assessment_id)
     require_analysis(assessment)
     # AI suggestions are never authoritative; include recorded revisions for clarity.
@@ -39,9 +43,14 @@ def assessment_report(
     document = detail(assessment)
     # The ledger states which inputs the final decision was taken against.
     ledger = provenance_view(db, assessment)
+    translator = Translator(locale)
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-store",
+        # The export states its own locale and how complete that catalogue is,
+        # so a fallback to English is visible instead of silent.
+        "X-Report-Locale": locale,
+        "X-Report-Missing-Translations": str(translator.missing_count()),
         "Content-Disposition": (
             f'attachment; filename="assessment-{assessment.id}.'
             f'{"md" if format == "markdown" else "html"}"'
@@ -52,9 +61,11 @@ def assessment_report(
             "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; "
             "form-action 'none'; frame-ancestors 'none'"
         )
-        return HTMLResponse(render_html(document, proposals, ledger), headers=headers)
+        return HTMLResponse(
+            render_html(document, proposals, ledger, locale=locale), headers=headers
+        )
     return PlainTextResponse(
-        render_markdown(document, proposals, ledger),
+        render_markdown(document, proposals, ledger, locale=locale),
         media_type="text/markdown; charset=utf-8",
         headers=headers,
     )

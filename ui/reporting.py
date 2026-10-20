@@ -1,9 +1,20 @@
-"""Read-only Streamlit report export adapter; no direct database access."""
+"""Read-only Streamlit report export adapter; no direct database access.
+
+The exported report carries the locale of the user interface: the API is
+asked for the same locale, so the headings and labels of the export are the
+ones the reader saw.
+"""
 
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from app.localization import current
 from ui.accessibility import heading
+
+# --- widget labels ------------------------------------------------------------
+
+LABEL_DOWNLOAD_MARKDOWN = "Download Markdown report"
+LABEL_DOWNLOAD_HTML = "Download HTML report"
 
 
 def fetch_report(
@@ -13,12 +24,15 @@ def fetch_report(
     timeout: float = 12.0,
     *,
     bearer_token: str | None = None,
+    locale: str | None = None,
 ) -> bytes:
     if format not in ("markdown", "html"):
         raise ValueError("Report format must be markdown or html")
     if not assessment_id or any(c in assessment_id for c in "?#/\\"):
         raise ValueError("Invalid assessment identifier")
     path = f"/api/v1/assessments/{quote(assessment_id, safe='')}/report?format={format}"
+    if locale:
+        path += f"&locale={quote(locale, safe='')}"
     headers = {"Accept": "text/plain" if format == "markdown" else "text/html"}
     if bearer_token:
         headers["Authorization"] = "Bearer " + bearer_token
@@ -33,39 +47,55 @@ def fetch_report(
 
 
 def render_report_tab(st, base_url: str, assessment: dict, level: int = 3) -> None:
-    heading(st, "Assessment report and export", level)
+    from app.localization import t
+
+    heading(st, t("ui.reporting.tab", "Assessment report and export"), level)
     st.caption(
-        "Evidence-labeled snapshot of the current deterministic analysis and optional "
-        "unverified AI suggestions. No rollout authorization."
+        t(
+            "ui.reporting.caption",
+            "Evidence-labeled snapshot of the current deterministic analysis and optional "
+            "unverified AI suggestions. No rollout authorization.",
+        )
     )
     if assessment.get("analysis") is None or assessment.get("analysis_revision") != assessment.get(
         "revision"
     ):
-        st.warning("Run deterministic analysis for the current revision before exporting.")
+        st.warning(
+            t(
+                "ui.reporting.stale",
+                "Run deterministic analysis for the current revision before exporting.",
+            )
+        )
         return
     assessment_id = assessment["id"]
+    locale = current().locale_code
     try:
         token = st.session_state.get("api_bearer") or None
-        markdown = fetch_report(base_url, assessment_id, "markdown", bearer_token=token)
-        html = fetch_report(base_url, assessment_id, "html", bearer_token=token)
+        markdown = fetch_report(
+            base_url, assessment_id, "markdown", bearer_token=token, locale=locale
+        )
+        html = fetch_report(base_url, assessment_id, "html", bearer_token=token, locale=locale)
     except (OSError, ValueError) as exc:
-        st.error(f"Report retrieval failed: {exc}")
+        st.error(t("ui.reporting.failed", "Report retrieval failed: {error}", error=exc))
         return
     st.download_button(
-        "Download Markdown report",
+        LABEL_DOWNLOAD_MARKDOWN,
         data=markdown,
         file_name=f"assessment-{assessment_id}.md",
         mime="text/markdown",
     )
     st.download_button(
-        "Download HTML report",
+        LABEL_DOWNLOAD_HTML,
         data=html,
         file_name=f"assessment-{assessment_id}.html",
         mime="text/html",
     )
-    with st.expander("Preview report (Markdown)"):
+    with st.expander(t("ui.reporting.preview", "Preview report (Markdown)")):
         st.caption(
-            "Markdown source of the current report. The preview is scrollable with the "
-            "keyboard: focus the code block and use the arrow keys."
+            t(
+                "ui.reporting.preview_caption",
+                "Markdown source of the current report. The preview is scrollable with the "
+                "keyboard: focus the code block and use the arrow keys.",
+            )
         )
         st.code(markdown.decode("utf-8"), language="markdown")
