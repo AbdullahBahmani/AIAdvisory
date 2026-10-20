@@ -38,6 +38,25 @@ SUITE_SCHEMA = os.getenv("PG_DRILL_SUITE_SCHEMA", "aiadvisory_pg_suite")
 HEAD_REVISION = "0008_portfolio"
 
 
+def expected_head_revision() -> str:
+    """The current head revision, derived from the migration chain.
+
+    Deriving it rather than hard-coding it means a new migration does not turn an
+    assertion into a false failure, and a stale hard-coded revision cannot silently
+    stop checking what it claims to check.
+    """
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+
+    repo_root = Path(__file__).resolve().parent.parent
+    config = Config(str(repo_root / "alembic.ini"))
+    config.set_main_option("script_location", str(repo_root / "migrations"))
+    script = ScriptDirectory.from_config(config)
+    heads = script.get_heads()
+    assert len(heads) == 1, f"the migration chain must have exactly one head, found {heads}"
+    return heads[0]
+
+
 def configured_postgres_url() -> str | None:
     """Return the PostgreSQL URL the operator asked for, if any."""
     url = os.getenv("ADVISORY_PG_DRILL_URL", "").strip()

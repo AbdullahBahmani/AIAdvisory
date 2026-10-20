@@ -21,6 +21,7 @@ from tests.backend import (
     SQLITE,
     STATEMENTS,
     configured_postgres_url,
+    expected_head_revision,
     is_application_test,
     resolve_backend,
 )
@@ -64,7 +65,10 @@ def test_postgres_schema_is_migrated_to_head(postgres_suite_engine):
     """The suite runs against a migrated catalogue, not against ``create_all``."""
     with postgres_suite_engine.connect() as conn:
         version = conn.execute(text("select version_num from alembic_version")).scalar_one()
-    assert version == "0008_portfolio"
+    # Derive the expected head from the migration chain instead of hard-coding it:
+    # a new migration must not turn this into a false failure, and a stale
+    # hard-coded revision would silently stop checking what it claims to check.
+    assert version == expected_head_revision()
 
 
 @pytest.mark.last
