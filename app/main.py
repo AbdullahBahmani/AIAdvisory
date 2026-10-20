@@ -10,6 +10,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.api.advisor import router as advisor_router
 from app.api.assessments import router as assessments_router
+from app.api.notifications import router as notifications_router
 from app.api.portfolio import router as portfolio_router
 from app.api.reports import router as reports_router
 from app.api.workspace import router as workspace_router
@@ -29,13 +30,16 @@ from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request,
 
 #: Schema revisions this build can serve. ``0008_portfolio`` is the previous
 #: head and stays supported; ``0010_index_and_constraint_hardening`` adds the
-#: tenant-path indexes and the step-order uniqueness constraint. Both run the
-#: same application code, so either revision is a healthy database.
+#: tenant-path indexes and the step-order uniqueness constraint;
+#: ``0013_notification_delivery`` adds the notification destinations and the
+#: queued outbound deliveries. All of them run the same application code, so
+#: every revision in this set is a healthy database.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
         "0009_local_attribution",
         "0010_index_and_constraint_hardening",
+        "0013_notification_delivery",
     }
 )
 
@@ -144,5 +148,7 @@ app.include_router(advisor_router, dependencies=[Depends(authenticate_request)])
 app.include_router(reports_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(workspace_router, dependencies=[Depends(authenticate_request)])
+
+app.include_router(notifications_router, dependencies=[Depends(authenticate_request)])
 
 app.include_router(portfolio_router, dependencies=[Depends(authenticate_request)])
