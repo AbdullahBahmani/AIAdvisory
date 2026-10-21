@@ -42,10 +42,11 @@ from app.telemetry import APP_VERSION, METRICS_CONTENT_TYPE, instrument_request,
 #: tables; ``0013_notification_delivery`` adds the notification destinations
 #: and the queued outbound deliveries; ``0014_credential_lifecycle`` adds the
 #: credential lifecycle columns (explicit expiry, rotation overlap) and the
-#: organization scope of audit events. The lifecycle and chain columns are
-#: required by the running code, so a database that has not applied them is
-#: not ready. All of these revisions run the same application code, so every
-#: revision in this set is a healthy database.
+#: organization scope of audit events; ``0015_observed_metrics`` adds the
+#: table that holds measurements ingested from a production system. The
+#: lifecycle and chain columns are required by the running code, so a database
+#: that has not applied them is not ready. All of these revisions run the same
+#: application code, so every revision in this set is a healthy database.
 SUPPORTED_SCHEMA_REVISIONS = frozenset(
     {
         "0008_portfolio",
@@ -55,6 +56,7 @@ SUPPORTED_SCHEMA_REVISIONS = frozenset(
         "0012_scim_provisioning",
         "0013_notification_delivery",
         "0014_credential_lifecycle",
+        "0015_observed_metrics",
     }
 )
 

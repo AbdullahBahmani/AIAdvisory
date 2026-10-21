@@ -6,6 +6,7 @@ calls an LLM, authorizes business actions or changes the deterministic rule engi
 
 from __future__ import annotations
 
+from datetime import UTC
 from decimal import Decimal
 from urllib.parse import unquote
 
@@ -17,6 +18,7 @@ from app.api.assessments import check_mutable, get_or_404
 from app.concurrency import assert_current_revision
 from app.db.models import (
     AssessmentRow,
+    ObservedMetricRow,
     OpportunityEvidenceRow,
     OpportunityProfileRow,
     PocObservationRow,
@@ -29,6 +31,9 @@ from app.domain.portfolio import (
     AttachmentView,
     EvidenceIn,
     EvidenceView,
+    ObservedMetricBatchIn,
+    ObservedMetricBatchResult,
+    ObservedMetricView,
     PocObservationIn,
     PocObservationView,
     PocPlanIn,
@@ -44,6 +49,7 @@ from app.domain.portfolio import (
 )
 from app.security import current_principal, require_role
 from app.services import attachments
+from app.services import metrics as metrics_service
 from app.services.approval_chain import require_completed_approvals
 from app.services.audit import audit
 from app.services.portfolio import priority_result, scenario_financial_model, value_projection
@@ -86,9 +92,42 @@ def _evidence_view(e: OpportunityEvidenceRow, revision: int) -> EvidenceView:
     )
 
 
-def _scenario_view(s: ValueScenarioRow, revision: int) -> ValueScenarioView:
+def _metric_view(metric: ObservedMetricRow, revision: int) -> ObservedMetricView:
+    # SQLite does not keep the timezone of a stored timestamp, so a moment
+    # that comes back without one is the UTC moment that was written.
+    observed_at = metric.observed_at
+    if observed_at.tzinfo is None:
+        observed_at = observed_at.replace(tzinfo=UTC)
+    return ObservedMetricView(
+        id=metric.id,
+        assessment_id=metric.assessment_id,
+        assessment_revision=metric.assessment_revision,
+        source_system=metric.source_system,
+        metric_key=metric.metric_key,
+        value=Decimal(metric.value),
+        unit=metric.unit,
+        observed_at=observed_at,
+        period=metric.period,
+        source_reference=metric.source_reference,
+        sample_size=metric.sample_size,
+        created_by=metric.created_by,
+        created_at=metric.created_at,
+        stale=metric.assessment_revision != revision,
+    )
+
+
+def _scenario_view(
+    s: ValueScenarioRow, revision: int, db: Session | None = None
+) -> ValueScenarioView:
     inputs = ValueScenarioIn.model_validate(s.inputs)
     gross, net, payback = value_projection(inputs)
+    # A citation is a claim about a measurement.  When the claim and the
+    # measurement disagree, the disagreement travels with the scenario.
+    citations = (
+        metrics_service.resolve_citations(db, s.assessment_id, inputs.observed_metric_ids)
+        if db is not None
+        else {}
+    )
     return ValueScenarioView(
         **inputs.model_dump(),
         id=s.id,
@@ -100,6 +139,7 @@ def _scenario_view(s: ValueScenarioRow, revision: int) -> ValueScenarioView:
         net_savings=net,
         payback_periods=payback,
         financial_model=scenario_financial_model(inputs),
+        citation_warnings=metrics_service.citation_warnings(inputs, citations, revision),
     )
 
 
@@ -222,7 +262,7 @@ def portfolio_opportunities(
         latest_scenario = latest.get((row.id, row.revision))
         forecast = None
         if latest_scenario:
-            scenario = _scenario_view(latest_scenario, row.revision)
+            scenario = _scenario_view(latest_scenario, row.revision, db)
             forecast = {
                 "name": scenario.name,
                 "currency": scenario.currency,
@@ -565,6 +605,56 @@ def delete_evidence_attachment(
     return Response(status_code=204)
 
 
+@router.get(
+    "/assessments/{assessment_id}/observed-metrics",
+    response_model=list[ObservedMetricView],
+)
+def list_observed_metrics(assessment_id: str, db: Session = Depends(get_db)):
+    """Every measurement of this assessment, newest first."""
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    return [
+        _metric_view(metric, row.revision)
+        for metric in metrics_service.load_metrics(db, row.id, row.revision)
+    ]
+
+
+@router.post(
+    "/assessments/{assessment_id}/observed-metrics",
+    response_model=ObservedMetricBatchResult,
+    status_code=201,
+)
+def ingest_observed_metrics(
+    assessment_id: str, payload: ObservedMetricBatchIn, db: Session = Depends(get_db)
+):
+    """Ingest measurements taken by a production system.
+
+    The endpoint stores what the source system reported.  It changes no score,
+    no rule hit and no recommendation: a measurement is evidence about a
+    quantity, and the human still decides.
+    """
+    require_role(db, "analyst")
+    row = get_or_404(db, AssessmentRow, assessment_id)
+    check_mutable(row)
+    _ensure_current(db, row)
+    result = metrics_service.ingest(db, row, payload.metrics, current_principal(db).subject)
+    if result.stored:
+        row.updated_at = utcnow()
+        audit(
+            db,
+            row,
+            "portfolio.metrics_ingested",
+            stored=len(result.stored),
+            already_recorded=result.already_recorded,
+            revision=row.revision,
+        )
+    db.commit()
+    return ObservedMetricBatchResult(
+        stored=[_metric_view(metric, row.revision) for metric in result.stored],
+        already_recorded=result.already_recorded,
+        advisory_only=True,
+    )
+
+
 @router.get("/assessments/{assessment_id}/value-scenarios", response_model=list[ValueScenarioView])
 def list_scenarios(assessment_id: str, db: Session = Depends(get_db)):
     row = get_or_404(db, AssessmentRow, assessment_id)
@@ -573,7 +663,7 @@ def list_scenarios(assessment_id: str, db: Session = Depends(get_db)):
         .where(ValueScenarioRow.assessment_id == row.id)
         .order_by(ValueScenarioRow.created_at.desc(), ValueScenarioRow.id.desc())
     ).all()
-    return [_scenario_view(s, row.revision) for s in scenarios]
+    return [_scenario_view(s, row.revision, db) for s in scenarios]
 
 
 @router.post(
@@ -586,6 +676,16 @@ def add_scenario(assessment_id: str, payload: ValueScenarioIn, db: Session = Dep
     row = get_or_404(db, AssessmentRow, assessment_id)
     check_mutable(row)
     _ensure_current(db, row)
+    # A scenario may cite measurements.  A citation to a measurement that does
+    # not exist, or that belongs to another assessment, is refused: a scenario
+    # must never carry a claim that cannot be checked.
+    cited = metrics_service.resolve_citations(db, row.id, payload.observed_metric_ids)
+    missing = sorted(set(payload.observed_metric_ids) - set(cited))
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"These observed metrics do not belong to this assessment: {missing}",
+        )
     item = ValueScenarioRow(
         assessment_id=row.id,
         assessment_revision=row.revision,
@@ -597,7 +697,7 @@ def add_scenario(assessment_id: str, payload: ValueScenarioIn, db: Session = Dep
     row.updated_at = utcnow()
     audit(db, row, "portfolio.scenario_created", scenario_id=item.id, revision=row.revision)
     db.commit()
-    return _scenario_view(item, row.revision)
+    return _scenario_view(item, row.revision, db)
 
 
 def _scenario_row(db: Session, row: AssessmentRow, scenario_id: str) -> ValueScenarioRow:

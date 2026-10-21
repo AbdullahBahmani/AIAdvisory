@@ -473,6 +473,52 @@ class ValueScenarioRow(Base):
     )
 
 
+class ObservedMetricRow(Base):
+    """One measurement ingested from a production system.
+
+    The measurement is stored exactly as the source system reported it.  It
+    is never rewritten, never aggregated and never substituted for a modelled
+    assumption: a scenario cites it, and the citation is checked separately.
+    """
+
+    __tablename__ = "observed_metrics"
+    __table_args__ = (
+        # A source system may push the same measurement twice.  The unique
+        # key makes the second push a no-op instead of a second record, so a
+        # retried delivery cannot inflate the evidence.
+        UniqueConstraint(
+            "assessment_id",
+            "source_system",
+            "metric_key",
+            "observed_at",
+            name="uq_observed_metric_measurement",
+        ),
+        Index(
+            "ix_observed_metrics_assessment_observed",
+            "assessment_id",
+            "metric_key",
+            "observed_at",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(
+        ForeignKey("assessments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    assessment_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_system: Mapped[str] = mapped_column(String(120), nullable=False)
+    metric_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    value: Mapped[str] = mapped_column(String(50), nullable=False)
+    unit: Mapped[str] = mapped_column(String(60), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    period: Mapped[str | None] = mapped_column(String(24))
+    source_reference: Mapped[str] = mapped_column(String(300), nullable=False)
+    sample_size: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 class PocPlanRow(Base):
     __tablename__ = "poc_plans"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)

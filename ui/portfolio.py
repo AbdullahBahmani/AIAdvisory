@@ -45,6 +45,13 @@ LABEL_ASSUMPTION_SOURCE = "Basis for these assumptions"
 LABEL_HORIZON_PERIODS = "Horizon for the financial model (periods)"
 LABEL_DISCOUNT_RATE = "Annual discount rate (e.g. 0.05)"
 LABEL_DISCOUNT_RATE_SOURCE = "Where the discount rate comes from"
+LABEL_SOURCE_SYSTEM = "Source system"
+LABEL_METRIC_KEY = "Metric"
+LABEL_METRIC_VALUE = "Value"
+LABEL_METRIC_UNIT = "Unit"
+LABEL_METRIC_OBSERVED_AT = "Observed at (ISO-8601, with timezone)"
+LABEL_METRIC_REFERENCE = "Where the measurement came from"
+LABEL_INGEST_METRICS = "Ingest measurement"
 LABEL_SAVE_SCENARIO = "Save scenario"
 LABEL_KPI_NAME = "KPI name"
 LABEL_UNIT = "Unit"
@@ -72,6 +79,65 @@ SCENARIO_FIELD_LABELS = {
     "recurring_cost": LABEL_RECURRING_COST,
     "initial_cost": LABEL_INITIAL_COST,
 }
+
+
+def _render_observed_metrics(st, base: str, root: str, aid: str, assessment: dict) -> None:
+    """Show the ingested measurements and offer to ingest one more."""
+    from app.localization import t
+
+    observed = _request(st, base, "GET", root + "/observed-metrics")
+    if observed is not None:
+        if not observed:
+            st.caption(
+                t(
+                    "ui.portfolio.observed_metrics_empty",
+                    "No measurement has been ingested for this assessment.",
+                )
+            )
+        for metric in observed:
+            st.write(f"**{metric['metric_key']}** · {_number(metric['value'])} {metric['unit']}")
+            st.caption(
+                t(
+                    "ui.portfolio.observed_metric_meta",
+                    "{system} · observed at {observed_at} · {reference} · bound to revision "
+                    "{revision}",
+                    system=metric["source_system"],
+                    observed_at=metric["observed_at"],
+                    reference=metric["source_reference"],
+                    revision=metric["assessment_revision"],
+                )
+                + (" · STALE" if metric["stale"] else "")
+            )
+    with st.expander(t("ui.portfolio.ingest_metric", "Ingest a measurement")):
+        with st.form(f"observed_metric_{aid}", clear_on_submit=True):
+            source_system = st.text_input(LABEL_SOURCE_SYSTEM, max_chars=120)
+            metric_key = st.text_input(LABEL_METRIC_KEY, max_chars=120)
+            value = st.text_input(LABEL_METRIC_VALUE, max_chars=40)
+            unit = st.text_input(LABEL_METRIC_UNIT, max_chars=60)
+            observed_at = st.text_input(LABEL_METRIC_OBSERVED_AT, max_chars=40)
+            reference = st.text_input(LABEL_METRIC_REFERENCE, max_chars=300)
+            if st.form_submit_button(
+                LABEL_INGEST_METRICS, disabled=assessment["status"] == "finalized"
+            ):
+                try:
+                    amount = _decimal(value.strip(), LABEL_METRIC_VALUE)
+                    body = {
+                        "metrics": [
+                            {
+                                "source_system": source_system.strip(),
+                                "metric_key": metric_key.strip(),
+                                "value": amount,
+                                "unit": unit.strip(),
+                                "observed_at": observed_at.strip(),
+                                "source_reference": reference.strip(),
+                            }
+                        ]
+                    }
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    if _request(st, base, "POST", root + "/observed-metrics", body):
+                        st.rerun()
 
 
 def _show_financial_model(st, scenario: dict) -> None:
@@ -586,6 +652,24 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
             if _upload_attachment(st, base, aid, uploaded):
                 st.rerun()
 
+    heading(
+        st,
+        t(
+            "ui.portfolio.observed_metrics",
+            "Observed metrics from production systems",
+        ),
+        level + 1,
+    )
+    st.caption(
+        t(
+            "ui.portfolio.observed_metrics_caption",
+            "A measurement is evidence about a quantity, not a conclusion. Ingesting one "
+            "changes no score, no rule hit and no recommendation; a scenario cites a "
+            "measurement, and the citation is checked against it.",
+        )
+    )
+    _render_observed_metrics(st, base, root, aid, assessment)
+
     heading(st, t("ui.portfolio.roi_simulator", "ROI scenario simulator"), level + 1)
     st.caption(
         t(
@@ -624,6 +708,8 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                     )
                 )
                 _show_financial_model(st, scenario)
+                for warning in scenario.get("citation_warnings") or []:
+                    st.warning(warning)
     with st.expander(t("ui.portfolio.sensitivity", "Assumption sensitivity (advisory)")):
         st.caption(
             t(

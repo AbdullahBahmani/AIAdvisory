@@ -58,6 +58,86 @@ class EvidenceView(EvidenceIn):
     stale: bool
 
 
+class ObservedMetricIn(BaseModel):
+    """One measurement taken from a production system.
+
+    An observed metric is a *measurement*, not a conclusion.  It records what
+    a source system reported, when it reported it and where the report came
+    from, so that a modelled assumption can later be checked against it.  It
+    never changes a score, a rule hit or a recommendation by itself.
+    """
+
+    source_system: str = Field(min_length=2, max_length=120)
+    metric_key: str = Field(min_length=2, max_length=120)
+    value: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
+    unit: str = Field(min_length=1, max_length=60)
+    observed_at: datetime
+    period: Period | None = None
+    source_reference: str = Field(min_length=5, max_length=300)
+    sample_size: int | None = Field(default=None, ge=1, le=10_000_000)
+
+    @field_validator("source_system", "metric_key", "unit", "source_reference")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("A metric field cannot be blank")
+        return value.strip()
+
+    @field_validator("observed_at")
+    @classmethod
+    def observed_at_is_timezone_aware(cls, value: datetime) -> datetime:
+        """A measurement without a timezone cannot be placed in time.
+
+        A naive timestamp is rejected rather than silently read as UTC, so a
+        source system cannot quietly shift every measurement by an offset.
+        """
+        if value.tzinfo is None:
+            raise ValueError("observed_at must carry a timezone offset")
+        return value
+
+
+class ObservedMetricBatchIn(BaseModel):
+    """A batch of measurements from one source system."""
+
+    metrics: list[ObservedMetricIn] = Field(min_length=1, max_length=200)
+
+
+class ObservedMetricView(ObservedMetricIn):
+    id: str
+    assessment_id: str
+    assessment_revision: int
+    created_by: str
+    created_at: datetime
+    stale: bool
+    advisory_only: bool = True
+
+
+class ObservedMetricBatchResult(BaseModel):
+    """What an ingestion request did.
+
+    ``already_recorded`` counts the measurements that were already stored.
+    The count is reported so a caller can see that a repeated delivery was
+    recognised instead of silently adding a second record.
+    """
+
+    stored: list[ObservedMetricView] = Field(default_factory=list)
+    already_recorded: int = 0
+    advisory_only: bool = True
+
+
+#: The value-scenario inputs an observed metric may substantiate.  A metric
+#: whose key is one of these names the quantity it measures, so a scenario
+#: that cites it can be checked against it.
+SCENARIO_INPUT_FIELDS = (
+    "cases_per_period",
+    "baseline_minutes",
+    "target_minutes",
+    "hourly_cost",
+    "recurring_cost",
+    "initial_cost",
+)
+
+
 class ValueScenarioIn(BaseModel):
     name: str = Field(min_length=3, max_length=120)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
@@ -78,6 +158,18 @@ class ValueScenarioIn(BaseModel):
         default=None, ge=0, le=1, max_digits=6, decimal_places=6
     )
     discount_rate_source: str | None = Field(default=None, min_length=5, max_length=300)
+    # The measurements that inform this scenario.  A citation is a claim by
+    # the author that the scenario is based on a measurement; the API checks
+    # that the cited measurements exist, belong to this assessment and are
+    # not stale, and it reports a value that does not match.
+    observed_metric_ids: list[str] = Field(default_factory=list, max_length=50)
+
+    @field_validator("observed_metric_ids")
+    @classmethod
+    def unique_metric_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("The same observed metric cannot be cited twice")
+        return value
 
     @field_validator("name", "assumption_source")
     @classmethod
@@ -131,6 +223,7 @@ class ValueScenarioView(ValueScenarioIn):
     net_savings: Decimal
     payback_periods: Decimal | None
     financial_model: FinancialModelView
+    citation_warnings: list[str] = Field(default_factory=list)
     advisory_only: bool = True
 
 
