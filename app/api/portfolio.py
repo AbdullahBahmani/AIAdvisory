@@ -46,7 +46,7 @@ from app.security import current_principal, require_role
 from app.services import attachments
 from app.services.approval_chain import require_completed_approvals
 from app.services.audit import audit
-from app.services.portfolio import priority_result, value_projection
+from app.services.portfolio import priority_result, scenario_financial_model, value_projection
 from app.services.sensitivity import (
     ASSUMPTIONS,
     IncomparableScenariosError,
@@ -99,6 +99,7 @@ def _scenario_view(s: ValueScenarioRow, revision: int) -> ValueScenarioView:
         gross_savings=gross,
         net_savings=net,
         payback_periods=payback,
+        financial_model=scenario_financial_model(inputs),
     )
 
 
@@ -227,6 +228,10 @@ def portfolio_opportunities(
                 "currency": scenario.currency,
                 "period": scenario.period,
                 "net_savings": str(scenario.net_savings),
+                # The financial model is advisory and may be unavailable: a
+                # scenario without a horizon or a discount rate has no net
+                # present value, and the reason travels with it.
+                "financial_model": scenario.financial_model.model_dump(mode="json"),
                 "illustrative_only": True,
             }
         current_plans = [

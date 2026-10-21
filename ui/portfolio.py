@@ -42,6 +42,9 @@ LABEL_HOURLY_COST = "Loaded hourly cost"
 LABEL_RECURRING_COST = "Recurring costs per period"
 LABEL_INITIAL_COST = "One-time implementation cost"
 LABEL_ASSUMPTION_SOURCE = "Basis for these assumptions"
+LABEL_HORIZON_PERIODS = "Horizon for the financial model (periods)"
+LABEL_DISCOUNT_RATE = "Annual discount rate (e.g. 0.05)"
+LABEL_DISCOUNT_RATE_SOURCE = "Where the discount rate comes from"
 LABEL_SAVE_SCENARIO = "Save scenario"
 LABEL_KPI_NAME = "KPI name"
 LABEL_UNIT = "Unit"
@@ -69,6 +72,74 @@ SCENARIO_FIELD_LABELS = {
     "recurring_cost": LABEL_RECURRING_COST,
     "initial_cost": LABEL_INITIAL_COST,
 }
+
+
+def _show_financial_model(st, scenario: dict) -> None:
+    """Show the advisory financial model of a value scenario.
+
+    An unavailable model is shown with its reason.  It is never shown as
+    zero, and a number that could not be computed is never hidden.
+    """
+    from app.localization import t
+
+    model = scenario.get("financial_model")
+    if not model:
+        return
+    if model.get("status") != "available":
+        st.caption(
+            t(
+                "ui.portfolio.financial_model_unavailable",
+                "Net present value: not available · {reason}",
+                reason=model.get("reason") or t("ui.portfolio.not_established", "Not established"),
+            )
+        )
+        return
+    currency = scenario.get("currency", "")
+    parts = [
+        t(
+            "ui.portfolio.financial_model_npv",
+            "Net present value: {npv}",
+            npv=_money(model.get("net_present_value"), currency),
+        )
+    ]
+    if model.get("internal_rate_of_return") is not None:
+        parts.append(
+            t(
+                "ui.portfolio.financial_model_irr",
+                "Internal rate of return: {irr}",
+                irr=_percent(model.get("internal_rate_of_return")),
+            )
+        )
+    elif model.get("internal_rate_of_return_reason"):
+        parts.append(
+            t(
+                "ui.portfolio.financial_model_irr_unavailable",
+                "Internal rate of return: not available · {reason}",
+                reason=model["internal_rate_of_return_reason"],
+            )
+        )
+    if model.get("discounted_payback_periods") is not None:
+        parts.append(
+            t(
+                "ui.portfolio.financial_model_payback",
+                "Discounted payback: {payback} periods",
+                payback=_number(model.get("discounted_payback_periods")),
+            )
+        )
+    elif model.get("discounted_payback_reason"):
+        parts.append(
+            t(
+                "ui.portfolio.financial_model_payback_unavailable",
+                "Discounted payback: not available · {reason}",
+                reason=model["discounted_payback_reason"],
+            )
+        )
+    st.caption(" · ".join(parts))
+    # The disclaimer is a contract statement produced by the service, so it is
+    # reproduced exactly as recorded rather than translated.
+    disclaimer = model.get("disclaimer")
+    if disclaimer:
+        st.caption(disclaimer)
 
 
 def _request(st, base: str, method: str, path: str, body=None):
@@ -219,6 +290,11 @@ def _money(value: object, currency: str) -> str:
 def _number(value: object) -> str:
     """Format a plain number with the conventions of the active locale."""
     return current().number(value)
+
+
+def _percent(value: object) -> str:
+    """Format a ratio (0.05) as a percentage of the active locale."""
+    return current().percent(value)
 
 
 def render_portfolio_dashboard(st, base: str, level: int = 2) -> None:
@@ -547,6 +623,7 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                         source=scenario["assumption_source"],
                     )
                 )
+                _show_financial_model(st, scenario)
     with st.expander(t("ui.portfolio.sensitivity", "Assumption sensitivity (advisory)")):
         st.caption(
             t(
@@ -682,6 +759,28 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                 ),
             }
             source = st.text_input(LABEL_ASSUMPTION_SOURCE, max_chars=300)
+            horizon = st.number_input(
+                LABEL_HORIZON_PERIODS,
+                min_value=0,
+                max_value=120,
+                value=0,
+                step=1,
+                key=f"scenario_{aid}_horizon",
+                help=(
+                    "Optional. Leave at zero for no horizon: without one there is no net "
+                    "present value and the financial model reports that it is unavailable."
+                ),
+            )
+            discount_rate = st.text_input(
+                LABEL_DISCOUNT_RATE,
+                max_chars=16,
+                key=f"scenario_{aid}_discount_rate",
+            )
+            discount_source = st.text_input(
+                LABEL_DISCOUNT_RATE_SOURCE,
+                max_chars=300,
+                key=f"scenario_{aid}_discount_source",
+            )
             if st.form_submit_button(
                 LABEL_SAVE_SCENARIO, disabled=assessment["status"] == "finalized"
             ):
@@ -697,6 +796,20 @@ def render_assessment_portfolio(st, base: str, assessment: dict, level: int = 3)
                             "assumption_source": source,
                         }
                     )
+                    if horizon:
+                        body["horizon_periods"] = int(horizon)
+                    if discount_rate.strip():
+                        rate = _decimal(discount_rate.strip(), LABEL_DISCOUNT_RATE)
+                        if rate < 0 or rate > 1:
+                            raise ValueError(
+                                f"{LABEL_DISCOUNT_RATE} must be between 0 and 1, for example 0.05"
+                            )
+                        body["discount_rate_annual"] = rate
+                        if not discount_source.strip():
+                            raise ValueError(
+                                f"{LABEL_DISCOUNT_RATE_SOURCE} is required when a rate is given"
+                            )
+                        body["discount_rate_source"] = discount_source.strip()
                 except ValueError as exc:
                     st.error(str(exc))
                 else:

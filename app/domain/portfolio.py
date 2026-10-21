@@ -13,6 +13,16 @@ Period = Literal["month", "quarter", "year"]
 Direction = Literal["higher", "lower"]
 Money = Decimal
 
+#: The version of the financial-model arithmetic.  A result states the method
+#: that produced it, so a change of method is visible in an old record.
+NPV_METHOD_VERSION = "npv-v1"
+
+#: The wording that keeps a modelled number from being read as a measurement.
+NPV_DISCLAIMER = (
+    "Advisory modelling from the stated inputs. No tax, inflation, adoption curve, "
+    "financing cost or residual value is modelled, and this is not an observed ROI."
+)
+
 
 class PortfolioProfileIn(BaseModel):
     strategic_alignment: int | None = Field(default=None, ge=1, le=5)
@@ -59,6 +69,15 @@ class ValueScenarioIn(BaseModel):
     recurring_cost: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
     initial_cost: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
     assumption_source: str = Field(min_length=5, max_length=300)
+    # The horizon and the discount rate are the two inputs a net present
+    # value needs.  Both are optional: a scenario without them is perfectly
+    # valid, and the financial model is then reported as *unavailable* with a
+    # reason instead of being computed from an invented rate.
+    horizon_periods: int | None = Field(default=None, ge=1, le=120)
+    discount_rate_annual: Decimal | None = Field(
+        default=None, ge=0, le=1, max_digits=6, decimal_places=6
+    )
+    discount_rate_source: str | None = Field(default=None, min_length=5, max_length=300)
 
     @field_validator("name", "assumption_source")
     @classmethod
@@ -66,6 +85,40 @@ class ValueScenarioIn(BaseModel):
         if not value.strip():
             raise ValueError("Name and assumption source cannot be blank")
         return value.strip()
+
+    @model_validator(mode="after")
+    def a_discount_rate_must_state_its_source(self) -> ValueScenarioIn:
+        """A rate without a source looks authoritative and is not."""
+        if self.discount_rate_annual is not None and not self.discount_rate_source:
+            raise ValueError("A discount rate must state its source")
+        if self.discount_rate_source is not None and self.discount_rate_annual is None:
+            raise ValueError("A discount rate source needs a discount rate")
+        if self.discount_rate_source is not None and not self.discount_rate_source.strip():
+            raise ValueError("The discount rate source cannot be blank")
+        return self
+
+
+class FinancialModelView(BaseModel):
+    """The advisory financial model of one value scenario.
+
+    The status is *available* only when every input the measure needs was
+    stated.  A missing input is reported as unavailable with a reason; it is
+    never reported as zero.
+    """
+
+    status: Literal["available", "unavailable"]
+    reason: str | None = None
+    net_present_value: Decimal | None = None
+    internal_rate_of_return: Decimal | None = None
+    internal_rate_of_return_reason: str | None = None
+    discounted_payback_periods: Decimal | None = None
+    discounted_payback_reason: str | None = None
+    periodic_discount_rate: Decimal | None = None
+    horizon_periods: int | None = None
+    warnings: list[str] = Field(default_factory=list)
+    method_version: str = NPV_METHOD_VERSION
+    disclaimer: str = NPV_DISCLAIMER
+    advisory_only: bool = True
 
 
 class ValueScenarioView(ValueScenarioIn):
@@ -77,6 +130,7 @@ class ValueScenarioView(ValueScenarioIn):
     gross_savings: Decimal
     net_savings: Decimal
     payback_periods: Decimal | None
+    financial_model: FinancialModelView
     advisory_only: bool = True
 
 

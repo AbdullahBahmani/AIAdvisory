@@ -5,7 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from app.domain.portfolio import ValueScenarioIn
+from app.domain.portfolio import FinancialModelView, ValueScenarioIn
+from app.services.npv import financial_model
 
 
 def value_projection(values: ValueScenarioIn) -> tuple[Decimal, Decimal, Decimal | None]:
@@ -17,6 +18,35 @@ def value_projection(values: ValueScenarioIn) -> tuple[Decimal, Decimal, Decimal
     net = gross - values.recurring_cost
     payback = values.initial_cost / net if net > 0 else None
     return gross, net, payback
+
+
+def scenario_financial_model(values: ValueScenarioIn) -> FinancialModelView:
+    """The advisory financial model of one value scenario.
+
+    The model is derived from the scenario's own numbers, so it can never
+    state a net present value for a scenario that has no horizon or no
+    discount rate: the result is *unavailable* with a reason instead.
+    """
+    _gross, net, _payback = value_projection(values)
+    result = financial_model(
+        initial_cost=values.initial_cost,
+        net_savings_per_period=net,
+        period=values.period,
+        horizon_periods=values.horizon_periods,
+        discount_rate_annual=values.discount_rate_annual,
+    )
+    return FinancialModelView(
+        status=result.status,  # type: ignore[arg-type]
+        reason=result.reason,
+        net_present_value=result.net_present_value,
+        internal_rate_of_return=result.internal_rate_of_return,
+        internal_rate_of_return_reason=result.internal_rate_of_return_reason,
+        discounted_payback_periods=result.discounted_payback_periods,
+        discounted_payback_reason=result.discounted_payback_reason,
+        periodic_discount_rate=result.periodic_discount_rate,
+        horizon_periods=result.horizon_periods,
+        warnings=result.warnings,
+    )
 
 
 def priority_result(

@@ -137,6 +137,61 @@ def test_rank_stays_unranked_until_real_assessment_and_verified_evidence(secure_
     assert client.get(root + "/evidence", headers=analyst).json()[0]["stale"] is True
 
 
+def test_a_scenario_without_a_horizon_has_no_financial_model(secure_client):
+    """A scenario without a horizon reports that it has no net present value."""
+    client, provision, _ = secure_client
+    owner, _, _ = provision("Money", "owner", "analyst")
+    aid = client.post("/api/v1/assessments", headers=owner, json={"title": "Savings"}).json()["id"]
+    root = f"/api/v1/assessments/{aid}"
+    created = client.post(root + "/value-scenarios", headers=owner, json=_scenario())
+    assert created.status_code == 201, created.text
+    model = created.json()["financial_model"]
+    assert model["status"] == "unavailable"
+    assert model["net_present_value"] is None
+    assert model["reason"]
+    assert model["advisory_only"] is True
+
+
+def test_a_scenario_with_a_horizon_and_a_sourced_rate_gets_a_financial_model(secure_client):
+    """The financial model is computed from the scenario's own inputs."""
+    client, provision, _ = secure_client
+    owner, _, _ = provision("Money", "owner", "analyst")
+    aid = client.post("/api/v1/assessments", headers=owner, json={"title": "Savings"}).json()["id"]
+    root = f"/api/v1/assessments/{aid}"
+    created = client.post(
+        root + "/value-scenarios",
+        headers=owner,
+        json=_scenario(
+            horizon_periods=12,
+            discount_rate_annual="0.05",
+            discount_rate_source="The central bank's published rate for 2026",
+        ),
+    )
+    assert created.status_code == 201, created.text
+    model = created.json()["financial_model"]
+    assert model["status"] == "available"
+    assert model["net_present_value"] is not None
+    assert model["internal_rate_of_return"] is not None
+    assert model["horizon_periods"] == 12
+    assert model["method_version"] == "npv-v1"
+    assert model["disclaimer"]
+
+
+def test_a_discount_rate_without_a_source_is_refused_by_the_api(secure_client):
+    """The API refuses a rate that does not say where it came from."""
+    client, provision, _ = secure_client
+    owner, _, _ = provision("Money", "owner", "analyst")
+    aid = client.post("/api/v1/assessments", headers=owner, json={"title": "Savings"}).json()["id"]
+    root = f"/api/v1/assessments/{aid}"
+    refused = client.post(
+        root + "/value-scenarios",
+        headers=owner,
+        json=_scenario(horizon_periods=12, discount_rate_annual="0.05"),
+    )
+    assert refused.status_code == 422
+    assert "source" in refused.text.lower()
+
+
 def test_explicit_illustrative_scenarios_and_staleness(secure_client):
     client, provision, _ = secure_client
     owner, _, _ = provision("Money", "owner", "analyst")
