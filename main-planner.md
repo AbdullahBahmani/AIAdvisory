@@ -4,7 +4,7 @@
 **Target file:** main-planner.md (repository root)  
 **Plan created:** 2026-10-11  
 **Source:** Uploaded AI_Opportunity_Advisor_Blueprint.zip, containing AI_OPPORTUNITY_ADVISOR_BLUEPRINT.md (55 sections).  
-**Status (2026-10-20):** Phases 0–8 are implemented on `main` and the local verification that was previously blocked is now done (Python 3.12 lock, clean lint, a passing test suite, drift-free migrations, a booting Docker deployment, a real PostgreSQL 16 drill, and a 31-case evaluation corpus). **Phase 9** (`docs/phase9.md`) has since been delivered: verified reviewer attribution, a decision provenance ledger, evaluation expansion with a 0-of-20 false-positive rate, value sensitivity envelopes, and a ranking calibration harness. The whole suite now runs genuinely against PostgreSQL (432 passed, 3278 statements executed), the Docker deployment builds and boots on its canonical ports, the rate limiter is verified to be enforced globally across replicas, and the UI has been accessibility-audited to zero axe violations.
+**Status (2026-10-21):** Phases 0–8 are implemented on `main` and the local verification that was previously blocked is now done (Python 3.12 lock, clean lint, a passing test suite, drift-free migrations, a booting Docker deployment, a real PostgreSQL 16 drill, and a 31-case evaluation corpus). **Phase 9** (`docs/phase9.md`) has since been delivered: verified reviewer attribution, a decision provenance ledger, evaluation expansion with a 0-of-20 false-positive rate, value sensitivity envelopes, and a ranking calibration harness. The whole suite now runs genuinely against PostgreSQL (432 passed, 3278 statements executed), the Docker deployment builds and boots on its canonical ports, the rate limiter is verified to be enforced globally across replicas, and the UI has been accessibility-audited to zero axe violations. **Phase 10** has since been delivered: architecture-pattern diagrams, a server-side PDF export, an advisory net present value model, and ingestion of measurements taken by a production system. The suite now passes **598 tests** on the local SQLite backend.
 
 **Still not verified, and unchanged in substance:** a real IdP/SSO/MFA session, privacy/DPIA/residency and provider-governance approval, encrypted off-site backup with a measured RPO/RTO, managed TLS/WAF ingress, external monitoring and alerting, container image scanning and SBOM, an independent penetration test, a named release approver, field-quality evaluation against real assessments, and browser-level SSO/CSRF end-to-end testing. **The production gate remains CLOSED** and `ADVISORY_DEPLOYMENT_MODE=production` still refuses to boot. No GitHub-hosted runners are used or enabled.
 
@@ -63,13 +63,13 @@ Build a decision-support application for a Forward Deployed Engineer (FDE) to:
 - [x] Full Markdown or HTML assessment report export with evidence and caveats.
 
 ### If MVP is stable / next release
-- [ ] Architecture-pattern diagrams and detailed PoC planning. *Partially delivered: the report carries a deterministic "simplest adequate starting pattern" table per task and Phase 8 adds PoC plans with KPI targets. **Diagrams** are not delivered.*
+- [x] Architecture-pattern diagrams and detailed PoC planning. *Delivered in Phase 10: a deterministic architecture-pattern diagram per analysed task, drawn from the recorded recommendation category and the triggered rules, rendered as Mermaid in the Markdown export, as inline SVG in the HTML export and as PDF vectors in the PDF export. Detailed PoC planning was delivered by Phase 8.*
 - [x] KPI and evaluation-case suggestions, comparison of assessments. *Phase 8: revision-bound PoC KPI observations and the cross-assessment portfolio view.*
-- [ ] Richer multi-assessment dashboard and configurable scoring weights. *Partially delivered: the Phase 7 organization dashboard and Phase 8 portfolio dashboard exist. **Configurable** scoring weights are not implemented — the weights are a versioned constant in `app/services/scoring.py`.*
-- [ ] PDF export and more polished reports. *Not delivered; explicitly deferred. The HTML report can be printed to PDF by the operator, but that is not a validated PDF pipeline.*
+- [ ] Richer multi-assessment dashboard and configurable scoring weights. *Partially delivered: the Phase 7 organization dashboard and Phase 8 portfolio dashboard exist. **Configurable** scoring weights are not implemented and are deliberately not — the weights stay a versioned constant in `app/services/scoring.py` (ADR-0012).*
+- [x] PDF export and more polished reports. *Delivered in Phase 10: a server-side PDF pipeline built from the same internal section builder as the Markdown and HTML exports (ADR-0015). The earlier deferral (ADR-0013) is superseded; the browser print-to-PDF path is no longer the only way to obtain a PDF.*
 
 ### Later / explicitly not MVP
-- [ ] Organization-wide prioritization, external CRM/ERP connectors, automated ingestion, enterprise SSO, multi-FDE collaboration, historic benchmarks, agentic execution, and real-world transactional actions.
+- [ ] Organization-wide prioritization, external CRM/ERP connectors, automated ingestion, enterprise SSO, multi-FDE collaboration, historic benchmarks, agentic execution, and real-world transactional actions. *Phase 10 delivers **ingestion of measurements** from a production system; it does not deliver the connectors, the automated pipeline, the enterprise SSO, the historic benchmarks or the agentic execution.*
 - [ ] Production rollout authorization by the software itself (never a feature).
 
 ## 3. Proposed technical architecture
@@ -717,3 +717,90 @@ case-sensitive header comparison that reported headers which were demonstrably
 present as missing, and an audit-history check that did not know about the
 rollback detection. Correcting a tool that reports false findings is as
 important as fixing the defects it found.
+
+
+## Phase 10 — the product gaps that were code, not procurement (2026-10-21)
+
+Phase 10 closes the four items of §2 and of P8-10 that turned out to be
+**buildable in this repository** rather than dependent on an IdP, a managed
+cluster, a vendor or a field pilot. Everything Phase 10 delivers was
+deliberately *not* part of the production gate: it adds no approval, no
+external dependency on infrastructure, and no claim that a modelled number is
+a measurement.
+
+**Source delivered (verified locally, 598 tests passing):**
+- [x] P10-01 **Architecture-pattern diagrams.** One deterministic diagram per
+  analysed task, drawn from the recorded recommendation category and the
+  triggered rules (`app/reporting/diagrams.py`). One specification, three
+  renderers: Mermaid for the Markdown export, inline SVG for the self-contained
+  HTML export, and PDF vectors for the PDF export, so the three artefacts
+  cannot disagree. A deterministic path is drawn *without* a model, a human
+  approval is drawn as a human step, and the required controls are drawn as a
+  gate bar over the whole flow. A diagram never claims more than the
+  deterministic engine recorded, and untrusted task ids cannot break the
+  markup.
+- [x] P10-02 **Server-side PDF export** (`app/reporting/pdf.py`, ADR-0015).
+  The PDF is rendered from the *same* internal section builder as the Markdown
+  and HTML exports, so it cannot say anything they would not. ReportLab is a
+  pure-Python generator: no browser, no system library, no native extension and
+  no network access during rendering. The staleness refusal, the
+  fact/estimate labelling and the advisory notice are unchanged, and every page
+  carries the "not rollout authorization" footer. A character the embedded font
+  cannot draw is replaced by a visible placeholder and **counted**: the count
+  is reported in `X-PDF-Unrenderable-Characters` and the PDF states it, because
+  a report that silently loses content is the exact failure this product
+  exists to prevent.
+- [x] P10-03 **An advisory net present value model** (`app/services/npv.py`).
+  A value scenario may state a horizon and a discount rate, and the model then
+  reports a net present value, an internal rate of return and a discounted
+  payback. Three rules are enforced: a discount rate **without a stated source
+  is refused**; a missing input produces *unavailable with a reason* and never
+  a zero; and the arithmetic is `Decimal` throughout and agrees with an
+  independent calculation. The internal rate of return does not need a
+  discount rate, so it is reported even when the net present value is
+  unavailable, and every measure carries its own reason. No tax, inflation,
+  adoption curve, financing cost or residual value is modelled, and the
+  disclaimer travels with every result.
+- [x] P10-04 **Ingestion of measurements taken by a production system**
+  (`app/services/metrics.py`, migration `0015_observed_metrics`). This is the
+  part of P8-10 that was buildable: the *connectors* and the *automated
+  pipeline* are not, but the receiving end is. A measurement is stored exactly
+  as the source system reported it, bound to the assessment revision that was
+  current when it arrived, and it is never counted twice: a unique key on
+  (assessment, source system, metric key, observed moment) makes a repeated
+  delivery a no-op and the response *reports* the count. A moment without a
+  timezone is refused rather than silently read as UTC, and a stored moment is
+  normalised to UTC, so the same instant in two timezones is one measurement.
+  A value scenario may *cite* a measurement: a citation to a measurement of
+  another assessment is refused, and a citation that contradicts the scenario
+  is reported with the scenario rather than resolved silently.
+
+**What Phase 10 deliberately did not do:**
+- It did not make the scoring weights configurable. ADR-0012 keeps them a
+  versioned constant, and a synthetic corpus may check for regressions but may
+  not justify a change.
+- It did not add cross-currency logic. There is no sourced rate and no
+  rate-date policy, so mixed currency stays **refused** rather than
+  approximated.
+- It did not add DLP or encryption at rest. That remains a prerequisite
+  decision that has not been made, and a consent-verification or DLP claim
+  cannot be manufactured by an ingestion endpoint.
+- It did not close any Phase 5–9 release gate, and it does not change the
+  fact that `ADVISORY_DEPLOYMENT_MODE=production` refuses to boot.
+
+**Known limitations carried by the new code:**
+- The PDF font covers Latin, Greek and Cyrillic. A character outside that
+  range is drawn as `?` and counted; the Markdown export remains the complete
+  record.
+- The periodic discount rate is a high-precision approximation of an
+  irrational root, so the net present value is an approximation with a stated
+  precision, not an exact value.
+- The measurement ingestion is a *receiving* end, not a connector. A source
+  system still has to push its measurements, by hand or by an integration the
+  organization builds.
+- The diagrams are a *starting pattern* per task. They are not a design, and
+  they are not validated.
+
+**Status:** Phase 10 source delivered and verified locally. **NOT certified,
+launched, or approved for personal or regulated business data.** The
+production startup guard remains closed. No GitHub-hosted runners are used.

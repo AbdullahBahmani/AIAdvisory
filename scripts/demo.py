@@ -102,6 +102,10 @@ def run_demo(output: Path) -> dict[str, str]:
                     )
                     report.raise_for_status()
                     (output / f"{name}.{suffix}").write_text(report.text, encoding="utf-8")
+                # The PDF is written as bytes: it is a binary document, not text.
+                pdf = client.get(f"/api/v1/assessments/{assessment_id}/report?format=pdf")
+                pdf.raise_for_status()
+                (output / f"{name}.pdf").write_bytes(pdf.content)
                 results[name] = category
     finally:
         if previous_demo_mode is None:
@@ -118,7 +122,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("demo_out"))
     args = parser.parse_args()
     for name, category in run_demo(args.output).items():
-        print(f"{name}: {category} — exported Markdown and HTML")
+        print(f"{name}: {category} — exported Markdown, HTML and PDF")
     print("Synthetic local demonstration only. No final identity verification or rollout approval.")
 
 

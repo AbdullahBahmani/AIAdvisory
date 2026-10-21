@@ -213,12 +213,15 @@ Read this before quoting any number above.
 
 ## Report snapshot reproducibility
 
-`GET /api/v1/assessments/{id}/report?format=markdown|html` exports the **current deterministic
+`GET /api/v1/assessments/{id}/report?format=markdown|html|pdf` exports the **current deterministic
 analysis revision**. If inputs change, the stored analysis is invalidated and the endpoint returns
-HTTP 409 until rescore. Both formats use the same internal section builder, include labels for
+HTTP 409 until rescore. All three formats use the same internal section builder, include labels for
 assumptions and unknowns, identify unverified/stale AI proposals, and reproduce from unchanged
 saved assessment contents. No wall-clock report-generation timestamp is injected.
 
 The report API is unauthenticated in the **local demo**. Do not deploy it publicly or put sensitive
-data in the database. PDF export is explicitly deferred; HTML can be printed locally to PDF by the
-operator, but that is not a validated production PDF pipeline.
+data in the database. The PDF export is a server-side pipeline delivered in Phase 10
+([ADR-0015](decisions/0015-server-side-pdf-export.md)); it embeds no external resource and a
+character its font cannot draw is replaced by a visible placeholder and counted in the
+`X-PDF-Unrenderable-Characters` header, so text is never lost silently. The Markdown export
+remains the complete record.

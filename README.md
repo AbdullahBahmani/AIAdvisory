@@ -12,7 +12,9 @@ A **human-led, rules-first** decision-support app for discovering workflows, eva
 
 The [implementation planner](main-planner.md) tracks completed checks and remaining gates.
 
-**Phase 4:** read-only version-bound Markdown/HTML report downloads, deterministic architecture/PoC suggestions, synthetic offline golden evaluations, end-to-end demo exports, and local-only Docker Compose scaffolding are implemented. See [demo guide](docs/demo.md) and [evaluation limitations](docs/evaluation.md). Browser Streamlit smoke and real Docker boot are not verified here.
+**Phase 4:** read-only version-bound Markdown/HTML/PDF report downloads, deterministic architecture/PoC suggestions, synthetic offline golden evaluations, end-to-end demo exports, and local-only Docker Compose scaffolding are implemented. See [demo guide](docs/demo.md) and [evaluation limitations](docs/evaluation.md). Browser Streamlit smoke and real Docker boot are not verified here.
+
+**Phase 10:** the four gaps that turned out to be buildable rather than dependent on an IdP, a managed cluster or a vendor are now delivered — **architecture-pattern diagrams** (one deterministic picture per task, rendered as Mermaid, inline SVG and PDF vectors), a **server-side PDF export** (same view model as the Markdown and HTML exports, ADR-0015), an **advisory net present value model** (NPV, IRR and discounted payback, with a sourced discount rate and an explicit *unavailable* state for every missing input), and **ingestion of measurements taken by a production system** (stored exactly as reported, never counted twice, never able to change a score or a recommendation). See [Phase 10 guide](docs/phase10.md). Phase 10 closes no Phase 5–9 release gate.
 
 ## Run locally — no GitHub runners
 
@@ -92,7 +94,8 @@ Any change to intake, answers, workflows, steps, or tasks increments `revision` 
 | GET | `/api/v1/assessments/{id}/audit` | Read local audit events |
 | POST | `/api/v1/assessments/{id}/ai/{feature}` | Opt-in, structured suggestion only; six supported features |
 | GET | `/api/v1/assessments/{id}/ai-runs` | Saved, revision-aware AI proposals |
-| GET | `/api/v1/assessments/{id}/report?format=markdown\|html` | Download read-only, current-revision Markdown or HTML report; returns 409 for stale analysis |
+| GET | `/api/v1/assessments/{id}/report?format=markdown\|html\|pdf` | Download read-only, current-revision Markdown, HTML or PDF report; returns 409 for stale analysis |
+| GET / POST | `/api/v1/assessments/{id}/observed-metrics` | List / ingest measurements taken by a production system (Phase 10) |
 
 See OpenAPI for exact request schemas and validation errors. The rules-only endpoints never call an AI model. The opt-in advisor endpoints may call the configured external provider, but never execute financial, customer, or operational actions.
 
@@ -147,8 +150,10 @@ hosted CI; **do not enable GitHub Actions runners**.
 - [ADR-0010: Deployment audience and hosting posture](docs/decisions/0010-deployment-audience-and-hosting.md)
 - [ADR-0011: No external model provider](docs/decisions/0011-no-external-model-provider.md)
 - [ADR-0012: Value and score thresholds stay provisional](docs/decisions/0012-value-and-score-thresholds.md)
-- [ADR-0013: PDF export is not MVP-critical](docs/decisions/0013-pdf-export-not-mvp-critical.md)
+- [ADR-0013: PDF export is not MVP-critical](docs/decisions/0013-pdf-export-not-mvp-critical.md) — the deferral, lifted by ADR-0015
+- [ADR-0015: A server-side PDF export pipeline](docs/decisions/0015-server-side-pdf-export.md)
 - [Phase 9 plan: attribution, calibration and value maturity](docs/phase9.md)
+- [Phase 10 guide: diagrams, PDF, net present value and measurement ingestion](docs/phase10.md)
 - [Evaluation fixtures and caveats](docs/evaluation.md)
 - [Ranking calibration harness (P9-05)](docs/calibration.md)
 - [Demo runbook](docs/demo.md)

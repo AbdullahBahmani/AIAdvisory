@@ -21,11 +21,11 @@ Related documents: [architecture.md](architecture.md) (design and boundaries),
 python -m scripts.demo --output demo_out
 ```
 
-This creates an **isolated ephemeral SQLite database** via FastAPI TestClient and drives three saved workflows through API create → add steps and tasks → deterministic analyze → provisional FDE review → Markdown/HTML report export. It does **not** modify your configured production/dev database and does not finalize any decision or authorize rollout. Reports appear in `demo_out/` (Git-ignored). Expected outputs:
+This creates an **isolated ephemeral SQLite database** via FastAPI TestClient and drives three saved workflows through API create → add steps and tasks → deterministic analyze → provisional FDE review → Markdown/HTML/PDF report export. It does **not** modify your configured production/dev database and does not finalize any decision or authorize rollout. Reports appear in `demo_out/` (Git-ignored). Expected outputs:
 
-- `ai-support.{md,html}` → `strong_ai_candidate`
-- `exact-pricing.{md,html}` → `traditional_software`
-- `hybrid-refund.{md,html}` → `ai_human_approval` and approval controls
+- `ai-support.{md,html,pdf}` → `strong_ai_candidate`
+- `exact-pricing.{md,html,pdf}` → `traditional_software`
+- `hybrid-refund.{md,html,pdf}` → `ai_human_approval` and approval controls
 
 A fourth separate evaluation (`privacy-blocked`) asserts the external-provider permission gate.
 
@@ -195,6 +195,9 @@ audit row states that the actor identity was unverified.
 
 *Caption — exported report.* The preview is the exact Markdown returned by
 `GET /api/v1/assessments/{id}/report?format=markdown` for the current revision. The
+same report is available as HTML and as PDF (`?format=html`, `?format=pdf`); all
+three are rendered from one internal section builder, so they cannot disagree
+about what the assessment says (see [Phase 10 guide](phase10.md)). The
 report labels assumptions and unknowns, states that no rollout is authorized, and is
 reproducible from unchanged saved content (no wall-clock timestamp is injected).
 
@@ -222,7 +225,11 @@ evidence" with the missing factors listed — the portfolio does not invent a ra
 - **AI advisor proposals** (tab `5 · AI advisor`): the tab requires an explicitly
   configured external provider plus an access token. No provider was used for these
   screenshots, so the tab is shown empty rather than faked.
-- **PDF export**: deliberately deferred (see [evaluation.md](evaluation.md)).
+- **PDF export**: delivered in Phase 10 as a server-side pipeline rendered from the
+  same internal section builder as the Markdown and HTML exports
+  (see [phase10.md](phase10.md) and [ADR-0015](decisions/0015-server-side-pdf-export.md)).
+  These screenshots predate it, so the PDF is not shown here; the download button is
+  on the reports tab.
 
 ## 4. Reproducing the screenshots
 
@@ -323,7 +330,7 @@ The design rationale lives in `docs/decisions/` (ADR-0001 … ADR-0008) and
 4. `python -m scripts.demo` produces all six files; exact pricing prefers software and refund requires approval.
 5. HTML escapes user-provided text rather than executing it; Markdown escapes injected formatting.
 6. Reports return HTTP 409 for un-analyzed or edited assessments, and 404 for missing/deleted records.
-7. Streamlit downloads both formats without calling database or AI providers directly.
+7. Streamlit downloads all three formats without calling database or AI providers directly.
 8. No external model or GitHub Actions runner was used.
 9. `python -m scripts.seed_demo_data` against a running demo API creates the four
    synthetic assessments listed in section 2 with the expected statuses

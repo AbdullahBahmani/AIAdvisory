@@ -7,8 +7,11 @@ technology was used to test it. The reader must judge the result.
 
 Scope: the Streamlit UI in `ui/` (the `Assessments`, `Workspace` and
 `Portfolio` views and the ten assessment tabs). It covers the accessibility
-half of planner item P7-10; the attachment, notification and PDF/Excel
-halves are out of scope here, and localization was not evaluated.
+half of planner item P7-10; the attachment and notification halves are out of
+scope here, and localization was not evaluated. The evaluation predates the
+Phase 10 work (the PDF download button, the measurement-ingestion form and
+the net-present-value display), so **those additions are not covered by the
+axe scan** and must be re-evaluated before they are claimed to be accessible.
 
 ---
 
