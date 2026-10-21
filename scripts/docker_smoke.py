@@ -52,6 +52,24 @@ def request(base_url: str, method: str, path: str, payload: dict | None = None) 
         return error.code, error.read().decode("utf-8", "replace")
 
 
+def request_bytes(
+    base_url: str, method: str, path: str, payload: dict | None = None
+) -> tuple[int, bytes]:
+    """Return the HTTP status and the raw body, for a binary response."""
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    headers = {"Accept": "*/*"}
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    call = urllib.request.Request(  # noqa: S310 - loopback local container only
+        f"{base_url}{path}", data=data, headers=headers, method=method
+    )
+    try:
+        with urllib.request.urlopen(call, timeout=30) as response:  # noqa: S310
+            return response.status, response.read()
+    except urllib.error.HTTPError as error:
+        return error.code, error.read()
+
+
 class Checks:
     """Collect named pass/fail results and print them as they happen."""
 
@@ -122,6 +140,16 @@ def run(base_url: str) -> bool:
     checks.expect("GET report (markdown)", status, body)
     status, body = request(base_url, "GET", f"{report}?format=html")
     checks.expect("GET report (html)", status, body)
+    # The PDF export is a binary document, so it is fetched as bytes and only
+    # its signature is checked.  It proves the PDF dependency is installed and
+    # working inside the container, not just in the developer's environment.
+    status, pdf = request_bytes(base_url, "GET", f"{report}?format=pdf")
+    checks.expect(
+        "GET report (pdf)",
+        status,
+        f"{len(pdf)} bytes, signature {pdf[:8]!r}",
+    )
+    checks.expect("the PDF starts with %PDF-", 200 if pdf.startswith(b"%PDF-") else 500, "")
 
     # The AI provider must stay off: no key is configured in the container.
     status, body = request(

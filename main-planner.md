@@ -801,6 +801,20 @@ a measurement.
 - The diagrams are a *starting pattern* per task. They are not a design, and
   they are not validated.
 
+**The accessibility evaluation was re-measured, and the previous result did
+not reproduce.** The Mermaid fence made the report preview contain
+syntax-highlighted tokens for the first time, and the axe scan found them.
+The scan was also re-run against the code *before* Phase 10 in the same
+environment and found the same 14 findings, so they were pre-existing gaps
+that the earlier "0 violations" result had not actually detected. All of them
+are now fixed — the code-block token colours, the caption on the darker
+sidebar, the file-uploader hint and the label of a disabled widget — and the
+result is **0 application violations in the light theme and 0 in the dark
+theme**. One framework-owned finding remains (Streamlit renders the
+file-uploader dropzone as a focusable element with `role="presentation"`); it
+is reported and allow-listed by name, and the allow-list cannot go stale.
+See `docs/accessibility.md` and `docs/phase10.md`.
+
 **Status:** Phase 10 source delivered and verified locally. **NOT certified,
 launched, or approved for personal or regulated business data.** The
 production startup guard remains closed. No GitHub-hosted runners are used.

@@ -201,7 +201,35 @@ current.
 
 ---
 
-## 5. What is still open
+## 5. The accessibility re-measurement
+
+The Mermaid fence in the Markdown report meant the report preview in the UI
+contained **syntax-highlighted tokens** for the first time. The axe scan was
+repeated against the Phase 10 build, in the light and the dark theme, and the
+previous "0 violations" result did **not** reproduce.
+
+The scan was also re-run against the code *before* Phase 10, in the same
+environment, and it found the same 14 findings. They were therefore
+**pre-existing gaps that the previous result had not actually detected**, not
+a regression introduced by Phase 10 — but the Mermaid fence made them visible,
+and they are now fixed:
+
+- the code block's `keyword`, `string`, `operator` and `punctuation` token
+  colours;
+- the caption, which was measured against the page but is also rendered on
+  the darker sidebar, where it fell to 4.27:1;
+- the file-uploader hint;
+- the label of a disabled widget.
+
+The result is **0 application violations in the light theme and 0 in the dark
+theme**. One framework-owned finding remains — Streamlit renders the
+file-uploader dropzone as a focusable element with `role="presentation"` —
+and the scan now reports it and allow-lists it by name, with a check that the
+allow-list cannot go stale. See [accessibility.md](accessibility.md).
+
+---
+
+## 6. What is still open
 
 Phase 10 closed four items and left everything else exactly where it was.
 
@@ -216,7 +244,7 @@ Phase 10 closed four items and left everything else exactly where it was.
 
 ---
 
-## 6. References
+## 7. References
 
 - `app/reporting/diagrams.py`, `app/reporting/pdf.py`, `app/services/npv.py`,
   `app/services/metrics.py`, `migrations/versions/0015_observed_metrics.py`.
