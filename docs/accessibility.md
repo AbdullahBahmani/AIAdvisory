@@ -61,6 +61,29 @@ so Playwright was used for the real measurements.
 | After, light theme | none | 0 |
 | After, dark theme | none | 0 |
 
+### 1.1 Re-measurement after Phase 10 (2026-10-21)
+
+The Phase 10 work added a Mermaid fence to the Markdown report, so the report
+preview in the UI now contains **syntax-highlighted Mermaid tokens** for the
+first time. The scan was repeated against the Phase 10 build, in both themes,
+and the previous "0 violations" result did **not** reproduce.
+
+| Run | Violations found | The application's own | Framework-owned |
+| --- | --- | --- | --- |
+| Phase 10, light theme | 14 | 14 | 0 |
+| Phase 10, dark theme | 14 | 14 | 0 |
+
+The 14 were real, and they were fixed (section 2.2). A scan of the code
+*before* Phase 10, run in the same environment, found the same 14 — so they
+were **pre-existing gaps that the previous "0 violations" result had not
+actually detected**, not a regression introduced by Phase 10. The previous
+result was recorded in a different environment; this document now records the
+current, reproducible measurement.
+
+After the fix, the scan reports **0 application violations in the light theme
+and 0 in the dark theme**, and one framework-owned finding in each
+(section 2.6).
+
 ---
 
 ## 2. Defects found
@@ -97,8 +120,15 @@ change of individual widgets.
 | Element | Measured | Nodes | Fixed value | Measured after |
 | --- | --- | --- | --- | --- |
 | `st.caption` (60 % opacity) | `#83858c` on `#ffffff` = 3.69:1 | 33 | opacity 0.67 | 4.52:1 |
+| `st.caption` on the **sidebar** | `#70727b` on `#f0f2f6` = 4.27:1 | 13 | opacity 0.69 | 4.52:1 |
 | `st.success` body text | `#158237` on `#e9f9ee` = 4.49:1 | 10 | `#158137` | 4.55:1 |
 | Markdown/code highlight | `#ff4b4b` on `#f8f9fb` = 3.13:1 | 23 | `#d03d3d` | 4.51:1 |
+| Code-block `.keyword` token | `#1c83e1` on `#f8f9fb` = 3.70:1 | 1 | `#1975c9` | 4.51:1 |
+| Code-block `.string` token | `#09ab3b` on `#f8f9fb` = 2.89:1 | 6 | `#07852e` | 4.51:1 |
+| Code-block `.operator` token | `#ed6f13` on `#f8f9fb` = 2.90:1 | 5 | `#b9560f` | 4.51:1 |
+| Code-block `.punctuation` token | `#80848d` on `#f8f9fb` = 3.56:1 | 219 | `#70737b` | 4.51:1 |
+| File-uploader hint | `#7d7f88` on `#f0f2f6` = 3.54:1 | 1 | `#6d6e76` | 4.53:1 |
+| A **disabled** widget's label | `#adadb2` on `#ffffff` = 2.22:1 | 1 | `#76767a` | 4.51:1 |
 | JSON viewer tokens | 3.15–3.87:1 | 10 | per-token corrections | 4.50–4.55:1 |
 | Primary button | `#ffffff` on `#ff4b4b` = 3.30:1 | 1 | `#d63f3f` | 4.52:1 |
 | Multiselect value chips | `#ffffff` on `#ff4b4b` = 3.30:1 | 2 | `#d63f3f` | 4.52:1 |
@@ -108,6 +138,23 @@ The corrected values are the smallest change that reaches 4.5:1, so the
 original palette is preserved as far as the ratio allows. In the dark theme
 the corresponding values were already above the ratio (for example the
 slider label `#ff4b4b` on `#0e1117` = 5.72:1) and are left unchanged.
+
+**The caption is measured against the darker surface.** A caption is rendered
+on the page *and* in the sidebar, and the sidebar background (`#f0f2f6` light,
+`#262730` dark) is darker than the page. A caption measured only against the
+page can pass there and fail in the sidebar, which is exactly what happened:
+4.52:1 on the page and 4.27:1 in the sidebar. The overlay now derives the
+caption opacity from the darker of the two surfaces.
+
+**The syntax highlighter's own colours are corrected.** Pygments paints the
+tokens of a code block with its own palette, and several of those colours are
+below 4.5:1 against the code background. Before Phase 10 the report preview
+never contained a highlighted fence, so the gap was invisible; the Mermaid
+diagram made it visible. The overlay now corrects the token colours of a code
+block — the keyword, string, operator and punctuation types — by moving them
+*away* from the background, which keeps the hue family. Because the
+highlighter's own selectors are more specific than the overlay's, the rules
+use `!important`, exactly as the JSON viewer rules already did.
 
 **Fix.** `ui/accessibility.py` computes corrected colours with WCAG
 arithmetic (`contrast_ratio`, `accessible_variant`, `minimum_opacity`) and
@@ -178,7 +225,26 @@ button is named "Show password". These names come from Streamlit's own
 components, not from the application, and the application cannot override
 them without abandoning those widgets.
 
-### 2.8 Things that were checked and found to be in order
+### 2.8 The file-uploader dropzone is focusable and `role="presentation"` — minor, not fixable here
+
+Streamlit renders the file-uploader dropzone as
+`<section role="presentation" tabindex="-1" data-testid="stFileUploaderDropzone">`.
+A focusable element with `role="presentation"` is an ARIA conflict, and axe
+reports it as `presentation-role-conflict`.
+
+**Not fixable from the application.** The role and the tab stop are both in
+Streamlit's own markup; there is no Streamlit parameter and no CSS that
+changes an element's ARIA role. Removing the file uploader would remove the
+evidence-attachment feature, which is a worse outcome than the finding. The
+dropzone does carry an `aria-label` ("Evidence file"), so it is announced.
+
+The browser scan therefore **reports** this finding and does not fail on it.
+The allow-list in `tests/test_ui_accessibility.py` names the rule, the element
+and the reason, and the test fails if a finding that is *not* on the list
+appears — and also fails if an allow-listed finding *disappears*, so the list
+cannot go stale. It is a deliberate, documented exception, not a silent one.
+
+### 2.9 Things that were checked and found to be in order
 
 * Every input, select, slider, checkbox, button and download control has a
   non-empty text label, and the label is exposed to assistive technology
@@ -254,7 +320,9 @@ responsible for:
 A **browser-based** check is included but **opt-in**; it skips cleanly when
 no instance, browser or axe build is present, so the default test run never
 needs one. It walks the ten tabs and both sidebar views, exactly as the
-evaluation did, and fails if any axe rule is violated on any of them:
+evaluation did, and fails if any axe rule is violated on any of them — except
+for the one framework-owned finding in section 2.8, which is reported and
+allow-listed by name:
 
 ```bash
 # terminal 1: API and UI
@@ -273,6 +341,19 @@ real regression test and not a tautology.
 
 Result of the full suite on this branch: **198 passed, 17 skipped** (the 16
 pre-existing skips plus the opt-in browser test).
+
+### 4.1 The re-measurement after Phase 10
+
+The Phase 10 work was re-measured with the same procedure, in the light and
+the dark theme, against the seeded demo instance:
+
+| Theme | Application violations | Framework-owned | Total nodes |
+| --- | --- | --- | --- |
+| Light | 0 | 1 (`presentation-role-conflict`, section 2.8) | 1 |
+| Dark | 0 | 1 (the same finding) | 1 |
+
+Both runs pass the opt-in browser test, and the allow-list check confirms
+that the documented finding is still present, so the list is not stale.
 
 ---
 

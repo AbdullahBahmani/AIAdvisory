@@ -60,6 +60,37 @@ JSON_TOKENS = (
     ("color: rgb(244, 191, 117)", "#f4bf75", "#49483e"),
 )
 
+#: The syntax-highlighting colours Pygments uses inside a code block.  The
+#: short class name is the Pygments token type, and one token type always has
+#: one colour, so a rule per type covers every language the report uses.
+#:
+#: These were measured in the browser against the code-block background of
+#: each theme; the ones that fall below 4.5:1 are the ones the overlay
+#: corrects.  The report preview shows a Mermaid fence, so the keyword and
+#: string colours are corrected for real; the others are corrected so the
+#: overlay is complete rather than partial.
+CODE_BLOCK_TOKENS = (
+    # (short class, colour)
+    ("keyword", "#1c83e1"),
+    ("string", "#09ab3b"),
+    ("operator", "#ed6f13"),
+    ("punctuation", "#80848d"),
+)
+
+#: The muted grey Streamlit paints the file-uploader hint in.
+UPLOADER_HINT = "#7d7f88"
+
+#: The muted grey Streamlit paints a closed expander's label in.
+EXPANDER_LABEL = "#adadb2"
+
+#: The sidebar background.  It is slightly darker than the page background,
+#: so a colour that was measured against the page can fall just below the
+#: contrast ratio when it is rendered in the sidebar.
+LIGHT_SIDEBAR_BACKGROUND = "#f0f2f6"
+
+#: The same secondary background in the dark theme.
+DARK_SIDEBAR_BACKGROUND = "#262730"
+
 _CAPTION_MIN_OPACITY = 0.6  # Streamlit's own value for st.caption
 
 _MARKDOWN_METACHARACTERS = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>])")
@@ -247,6 +278,39 @@ def _json_token_rules() -> list[str]:
     return rules
 
 
+def _code_block_token_rules() -> list[str]:
+    """Correct the syntax-highlighting colours inside a code block.
+
+    Pygments paints the tokens of a code block with its own palette, and
+    several of those colours are below 4.5:1 against the code background.
+    The report preview shows a Mermaid fence, so these colours are read by
+    people, not just by machines.  Each colour is moved *away* from the
+    background, which keeps its hue family while raising the ratio.
+    """
+    rules: list[str] = []
+    for short_class, colour in CODE_BLOCK_TOKENS:
+        light = accessible_variant(colour, LIGHT_CODE_BACKGROUND)
+        dark = accessible_variant(colour, DARK_CODE_BACKGROUND)
+        if light == colour.lower() and dark == colour.lower():
+            continue
+        rules.append(
+            f'[data-testid="stCode"] span.token.{short_class} '
+            f"{{ color: {light} !important; color: {_pair(light, dark)} !important; }}"
+        )
+    return rules
+
+
+def _muted_text_rule(
+    selector: str, colour: str, light_background: str, dark_background: str
+) -> str:
+    """Lift a muted grey that is too light on the background it sits on."""
+    light = accessible_variant(colour, light_background)
+    dark = accessible_variant(colour, dark_background)
+    if light == colour.lower() and dark == colour.lower():
+        return ""
+    return f"{selector} {{ color: {light}; color: {_pair(light, dark)}; }}"
+
+
 def build_stylesheet() -> str:
     """Return the CSS overlay that corrects Streamlit's default palette.
 
@@ -258,13 +322,25 @@ def build_stylesheet() -> str:
     its app container, and browsers without ``light-dark()`` fall back to the
     first (light) declaration.
     """
-    caption_opacity = minimum_opacity(LIGHT_TEXT, LIGHT_BACKGROUND)
+    caption_opacity = minimum_opacity(LIGHT_TEXT, LIGHT_SIDEBAR_BACKGROUND)
     success_light = accessible_variant(LIGHT_SUCCESS_TEXT, LIGHT_SUCCESS_BACKGROUND)
     success_dark = accessible_variant(DARK_SUCCESS_TEXT, DARK_SUCCESS_BACKGROUND)
     code_light = accessible_variant(STREAMLIT_PRIMARY, LIGHT_CODE_BACKGROUND)
     code_dark = accessible_variant(STREAMLIT_PRIMARY, DARK_CODE_BACKGROUND)
     slider_light = accessible_variant(STREAMLIT_PRIMARY, LIGHT_BACKGROUND)
     slider_dark = accessible_variant(STREAMLIT_PRIMARY, DARK_BACKGROUND)
+    uploader_rule = _muted_text_rule(
+        '[data-testid="stFileUploaderDropzoneInstructions"] span',
+        UPLOADER_HINT,
+        LIGHT_SIDEBAR_BACKGROUND,
+        DARK_SIDEBAR_BACKGROUND,
+    )
+    expander_rule = _muted_text_rule(
+        '[data-testid="stWidgetLabel"][disabled] p',
+        EXPANDER_LABEL,
+        LIGHT_BACKGROUND,
+        DARK_BACKGROUND,
+    )
 
     rules: list[str] = [
         "/* Streamlit renders selected-value chips with white text on the accent",
@@ -274,7 +350,9 @@ def build_stylesheet() -> str:
         _primary_button_rule(),
         "/* The code block is scrollable with the keyboard. */",
         _code_block_rule(),
-        "/* st.caption is rendered at 60% opacity (3.69:1 on white). */",
+        "/* st.caption is rendered at 60% opacity (3.69:1 on white). The caption",
+        "   is measured against the sidebar background, which is the darker of",
+        "   the two surfaces it is rendered on. */",
         f'[data-testid="stCaptionContainer"] {{ opacity: {caption_opacity}; }}',
         "/* st.success body text was 4.49:1 on the success background. */",
         (
@@ -287,6 +365,10 @@ def build_stylesheet() -> str:
             '[data-testid="stCode"] .token.table-header.important '
             f"{{ color: {code_light}; color: {_pair(code_light, code_dark)}; }}"
         ),
+        "/* The syntax highlighter's own token colours are below 4.5:1 on the",
+        "   code background. The report preview shows a Mermaid fence, so these",
+        "   colours are read by people. */",
+        *_code_block_token_rules(),
         "/* The slider's floating value label used the accent colour. */",
         (
             '[data-testid="stSliderThumbValue"] '
@@ -295,6 +377,10 @@ def build_stylesheet() -> str:
         "/* The JSON viewer paints its tokens with inline styles. */",
         *_json_token_rules(),
     ]
+    if uploader_rule:
+        rules.extend(["/* The file-uploader hint was 3.54:1 on the sidebar. */", uploader_rule])
+    if expander_rule:
+        rules.extend(["/* A disabled widget's label was 2.22:1 on the page. */", expander_rule])
     return "\n".join(rules)
 
 
